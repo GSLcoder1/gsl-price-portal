@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html><head><title>GSL Error Check</title></head>
+<body style="background:#000;color:#0f0;font-family:monospace;padding:20px;font-size:13px;">
+<h2 style="color:#C5A55A;">GSL Error Diagnostic</h2>
+<div id="log" style="white-space:pre-wrap;line-height:1.8;"></div>
+<script>
+var L = document.getElementById('log');
+function log(m) { L.innerHTML += m + '\n'; }
+
+log('Loading index.html source...');
+
+fetch('/index.html')
+  .then(r => r.text())
+  .then(html => {
+    log('✅ index.html loaded (' + html.length + ' chars)');
+    
+    // Check for CDN supabase reference
+    if (html.indexOf('cdn.jsdelivr.net/npm/@supabase') !== -1) {
+      log('❌ FOUND: Supabase CDN library reference (this causes the crash)');
+    } else {
+      log('✅ No Supabase CDN reference found');
+    }
+    
+    // Check for window.supabase.createClient
+    if (html.indexOf('window.supabase.createClient') !== -1) {
+      log('❌ FOUND: window.supabase.createClient (this crashes without CDN)');
+    } else {
+      log('✅ No window.supabase.createClient found');
+    }
+    
+    // Check for babel
+    if (html.indexOf('babel-standalone') !== -1) {
+      log('✅ Babel standalone found');
+    } else {
+      log('❌ Babel standalone NOT found');
+    }
+    
+    // Check for React
+    if (html.indexOf('react.production.min.js') !== -1) {
+      log('✅ React found');
+    } else {
+      log('❌ React NOT found');
+    }
+    
+    // Check for text/babel script
+    if (html.indexOf('type="text/babel"') !== -1) {
+      log('✅ text/babel script tag found');
+    } else {
+      log('❌ text/babel script tag NOT found');
+    }
+    
+    // Check for sbHeaders or SB_HDR
+    if (html.indexOf('SB_HDR') !== -1 || html.indexOf('sbHeaders') !== -1) {
+      log('✅ Supabase headers helper found');
+    } else {
+      log('❌ Supabase headers helper NOT found');
+    }
+    
+    // Show first 500 chars
+    log('\n--- First 500 chars of index.html ---');
+    log(html.substring(0, 500));
+    
+    // Show around line counts
+    var lines = html.split('\n');
+    log('\n--- Total lines: ' + lines.length + ' ---');
+    
+    // Try to find any syntax issues - look for common problems
+    log('\n--- Checking for common issues ---');
+    
+    // Check for optional chaining (?.) which older Babel might not support
+    var optChainCount = (html.match(/\?\./g) || []).length;
+    log('Optional chaining (?.) count: ' + optChainCount);
+    
+    // Check for nullish coalescing (??) 
+    var nullishCount = (html.match(/\?\?/g) || []).length;
+    log('Nullish coalescing (??) count: ' + nullishCount);
+    
+    log('\n🏁 DIAGNOSTIC COMPLETE');
+  })
+  .catch(e => {
+    log('❌ Failed to load index.html: ' + e.message);
+  });
+</script>
+</body></html>
