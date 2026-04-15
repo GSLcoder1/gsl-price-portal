@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html><head><title>GSL Babel Test</title></head>
+<body style="background:#000;color:#0f0;font-family:monospace;padding:20px;font-size:12px;">
+<h2 style="color:#C5A55A;">GSL Babel Compilation Test</h2>
+<div id="log" style="white-space:pre-wrap;line-height:1.6;word-break:break-all;"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script>
+var L = document.getElementById('log');
+function log(m) { L.innerHTML += m + '\n'; }
+
+fetch('/index.html')
+  .then(r => r.text())
+  .then(html => {
+    log('Loaded index.html (' + html.length + ' chars)');
+    
+    // Extract the text/babel script content
+    var match = html.match(/<script type="text\/babel">([\s\S]*?)<\/script>/);
+    if (!match) {
+      log('❌ Could not find text/babel script block');
+      return;
+    }
+    
+    var code = match[1];
+    log('Found JSX code block (' + code.length + ' chars, ' + code.split('\n').length + ' lines)');
+    
+    log('\nAttempting Babel compilation...');
+    try {
+      var result = Babel.transform(code, { presets: ['react'] });
+      log('✅ BABEL COMPILATION SUCCEEDED (' + result.code.length + ' chars output)');
+      log('\nIf this succeeded, the crash is at RUNTIME, not compilation.');
+      log('Trying to execute...');
+      
+      try {
+        // Create a function from the code but don't run React rendering
+        var testCode = result.code.replace(/ReactDOM\.render\(|ReactDOM\.createRoot\(/g, '// SKIPPED: ');
+        new Function(testCode);
+        log('✅ Code parsed as JavaScript successfully');
+      } catch(e2) {
+        log('❌ RUNTIME PARSE ERROR: ' + e2.message);
+        log('Stack: ' + e2.stack?.substring(0, 500));
+      }
+    } catch(e) {
+      log('❌ BABEL COMPILATION FAILED');
+      log('Error: ' + e.message);
+      
+      // Try to find the line
+      if (e.loc) {
+        log('At line: ' + e.loc.line + ', column: ' + e.loc.column);
+        var lines = code.split('\n');
+        var errLine = e.loc.line - 1;
+        log('\nContext around error:');
+        for (var i = Math.max(0, errLine - 3); i <= Math.min(lines.length - 1, errLine + 3); i++) {
+          var prefix = (i === errLine) ? '>>> ' : '    ';
+          log(prefix + (i + 1) + ': ' + lines[i]?.substring(0, 200));
+        }
+      }
+    }
+  })
+  .catch(e => log('❌ Fetch failed: ' + e.message));
+</script>
+</body></html>
