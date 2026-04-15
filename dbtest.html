@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html><head><title>GSL DB Test</title></head>
+<body style="background:#000;color:#0f0;font-family:monospace;padding:20px;font-size:14px;">
+<h2 style="color:#C5A55A;">GSL Supabase Connection Test</h2>
+<div id="log" style="white-space:pre-wrap;line-height:2;"></div>
+<script>
+var L = document.getElementById('log');
+function log(m) { L.innerHTML += m + '\n'; }
+
+var URL = "https://sbukzlykhdadznwamtoq.supabase.co";
+var KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNidWt6bHlraGRhZHpud2FtdG9xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyODAxOTcsImV4cCI6MjA5MTg1NjE5N30.AATnsdvPiAXWmJiMCIcFpBaBvY4C98icqfeK_RIlsKA";
+
+function hdr() {
+  return { "apikey": KEY, "Authorization": "Bearer " + KEY, "Content-Type": "application/json" };
+}
+
+async function run() {
+  log("1. Testing connection to Supabase...");
+  try {
+    var r = await fetch(URL + "/rest/v1/pricing_tiers?select=*", { headers: hdr() });
+    log("   Status: " + r.status);
+    var d = await r.json();
+    if (r.ok) {
+      log("✅ pricing_tiers: " + d.length + " rows");
+      log("   " + JSON.stringify(d));
+    } else {
+      log("❌ Error: " + JSON.stringify(d));
+    }
+  } catch(e) {
+    log("❌ FETCH FAILED: " + e.message);
+  }
+
+  log("\n2. Testing app_settings...");
+  try {
+    var r2 = await fetch(URL + "/rest/v1/app_settings?select=*", { headers: hdr() });
+    var d2 = await r2.json();
+    if (r2.ok) {
+      log("✅ app_settings: " + d2.length + " rows");
+      log("   " + JSON.stringify(d2));
+    } else {
+      log("❌ Error: " + JSON.stringify(d2));
+    }
+  } catch(e) {
+    log("❌ FETCH FAILED: " + e.message);
+  }
+
+  log("\n3. Testing app_users...");
+  try {
+    var r3 = await fetch(URL + "/rest/v1/app_users?select=id,email,role", { headers: hdr() });
+    var d3 = await r3.json();
+    if (r3.ok) {
+      log("✅ app_users: " + d3.length + " rows");
+      log("   " + JSON.stringify(d3));
+    } else {
+      log("❌ Error: " + JSON.stringify(d3));
+    }
+  } catch(e) {
+    log("❌ FETCH FAILED: " + e.message);
+  }
+
+  log("\n4. Testing WRITE to app_settings...");
+  try {
+    var r4 = await fetch(URL + "/rest/v1/app_settings", {
+      method: "POST",
+      headers: Object.assign({}, hdr(), { "Prefer": "resolution=merge-duplicates" }),
+      body: JSON.stringify({ key: "test_connection", value: { ok: true, time: new Date().toISOString() }, updated_at: new Date().toISOString() })
+    });
+    if (r4.ok || r4.status === 201) {
+      log("✅ Write succeeded!");
+    } else {
+      var d4 = await r4.json();
+      log("❌ Write error (" + r4.status + "): " + JSON.stringify(d4));
+    }
+  } catch(e) {
+    log("❌ WRITE FAILED: " + e.message);
+  }
+
+  log("\n🏁 DONE");
+}
+run();
+</script>
+</body></html>
