@@ -21,93 +21,75 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script type="text/babel">
 const { useState, useMemo, useCallback, useEffect, useRef } = React;
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SUPABASE CONNECTION
-   ─────────────────────────────────────────────────────────────────────────
-   Project: GSL Price Portal (Supabase free tier)
-   Tables used:
-     • pricing_tiers  — customer markup tiers (Homeowner, Contractor, etc.)
-     • app_settings   — key/value store for UI settings (level visibility, 
-                         column orders, show-all-levels toggle, etc.)
-     • level_visibility — per-level, per-scope visibility toggles
-     • app_users      — portal user accounts (future: replace hardcoded login)
-     • products       — product catalog (future: replace embedded CAT data)
-   
-   Currently wired: pricing_tiers, app_settings
-   Future migration: products table replaces embedded CAT object
+   SUPABASE CONNECTION — using raw fetch() (no CDN library needed)
    ═══════════════════════════════════════════════════════════════════════════ */
 const SUPABASE_URL = "https://sbukzlykhdadznwamtoq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNidWt6bHlraGRhZHpud2FtdG9xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyODAxOTcsImV4cCI6MjA5MTg1NjE5N30.AATnsdvPiAXWmJiMCIcFpBaBvY4C98icqfeK_RIlsKA";
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const SB_HDR = { "apikey": SUPABASE_ANON_KEY, "Authorization": "Bearer " + SUPABASE_ANON_KEY, "Content-Type": "application/json", "Prefer": "return=representation" };
 
-/* ─── Supabase Helper Functions ───────────────────────────────────────────
-   These wrap all database reads/writes. When handing off to your coder,
-   they can swap these for authenticated calls or add error handling.
-   ───────────────────────────────────────────────────────────────────────── */
+async function sbGet(table, query) {
+  try {
+    const r = await fetch(SUPABASE_URL + "/rest/v1/" + table + "?" + (query||"select=*"), { headers: SB_HDR });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch(e) { console.error("sbGet", table, e); return null; }
+}
+async function sbPost(table, body) {
+  try {
+    const r = await fetch(SUPABASE_URL + "/rest/v1/" + table, { method:"POST", headers: SB_HDR, body: JSON.stringify(body) });
+    if (!r.ok) { console.error("sbPost", table, r.status, await r.text()); return null; }
+    const d = await r.json(); return d?.[0] || d;
+  } catch(e) { console.error("sbPost", table, e); return null; }
+}
+async function sbPatch(table, id, body) {
+  try {
+    const r = await fetch(SUPABASE_URL + "/rest/v1/" + table + "?id=eq." + id, { method:"PATCH", headers: SB_HDR, body: JSON.stringify(body) });
+    if (!r.ok) { console.error("sbPatch", table, r.status, await r.text()); return null; }
+    const d = await r.json(); return d?.[0] || d;
+  } catch(e) { console.error("sbPatch", table, e); return null; }
+}
+async function sbDelete(table, id) {
+  try {
+    const r = await fetch(SUPABASE_URL + "/rest/v1/" + table + "?id=eq." + id, { method:"DELETE", headers: SB_HDR });
+    return r.ok;
+  } catch(e) { console.error("sbDelete", table, e); return false; }
+}
 
-/** Load all pricing tiers from Supabase, ordered by sort_order */
+/** Load all pricing tiers, ordered by sort_order */
 async function loadTiers() {
-  const { data, error } = await supabase
-    .from('pricing_tiers')
-    .select('*')
-    .order('sort_order', { ascending: true });
-  if (error) { console.error('loadTiers error:', error); return null; }
-  return data; // [{id, name, markup, sort_order, created_at}, ...]
+  return await sbGet("pricing_tiers", "select=*&order=sort_order.asc");
 }
-
-/** Save a new pricing tier to Supabase. Returns the inserted row. */
+/** Save a new tier */
 async function saveTier(name, markup, sort_order) {
-  const { data, error } = await supabase
-    .from('pricing_tiers')
-    .insert([{ name, markup, sort_order }])
-    .select();
-  if (error) { console.error('saveTier error:', error); return null; }
-  return data?.[0] || null;
+  return await sbPost("pricing_tiers", { name, markup, sort_order });
 }
-
-/** Update an existing tier by id */
+/** Update a tier by id */
 async function updateTier(id, updates) {
-  const { data, error } = await supabase
-    .from('pricing_tiers')
-    .update(updates)
-    .eq('id', id)
-    .select();
-  if (error) { console.error('updateTier error:', error); return null; }
-  return data?.[0] || null;
+  return await sbPatch("pricing_tiers", id, updates);
 }
-
 /** Delete a tier by id */
 async function deleteTier(id) {
-  const { error } = await supabase
-    .from('pricing_tiers')
-    .delete()
-    .eq('id', id);
-  if (error) { console.error('deleteTier error:', error); return false; }
-  return true;
+  return await sbDelete("pricing_tiers", id);
 }
-
-/** Load a setting by key from app_settings. Returns the value (jsonb) or null. */
+/** Load a setting by key */
 async function loadSetting(key) {
-  const { data, error } = await supabase
-    .from('app_settings')
-    .select('value')
-    .eq('key', key)
-    .single();
-  if (error) { /* not found is ok */ return null; }
-  return data?.value ?? null;
+  const d = await sbGet("app_settings", "select=value&key=eq." + encodeURIComponent(key));
+  return d && d.length > 0 ? d[0].value : null;
 }
-
-/** Save a setting (upsert by key). Value should be a JSON-serializable object. */
+/** Save a setting (upsert by key) */
 async function saveSetting(key, value) {
-  const { error } = await supabase
-    .from('app_settings')
-    .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
-  if (error) { console.error('saveSetting error:', error); return false; }
-  return true;
+  try {
+    const r = await fetch(SUPABASE_URL + "/rest/v1/app_settings", {
+      method: "POST",
+      headers: { ...SB_HDR, "Prefer": "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify({ key, value, updated_at: new Date().toISOString() })
+    });
+    return r.ok;
+  } catch(e) { console.error("saveSetting", key, e); return false; }
 }
 
 
