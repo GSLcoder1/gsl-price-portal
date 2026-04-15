@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html><head><title>Supabase Test</title></head>
+<body style="background:#000;color:#fff;font-family:monospace;padding:20px;">
+<h2>GSL Supabase Connection Test</h2>
+<div id="log" style="white-space:pre-wrap;line-height:2;"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+const log = (msg) => document.getElementById('log').innerHTML += msg + '\n';
+
+async function test() {
+  log('1. Loading Supabase client...');
+  try {
+    const sb = window.supabase.createClient(
+      "https://sbukzlykhdadznwamtoq.supabase.co",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNidWt6bHlraGRhZHpud2FtdG9xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyODAxOTcsImV4cCI6MjA5MTg1NjE5N30.AATnsdvPiAXWmJiMCIcFpBaBvY4C98icqfeK_RIlsKA"
+    );
+    log('✅ Supabase client created');
+
+    log('\n2. Reading pricing_tiers...');
+    const { data: tiers, error: tiersErr } = await sb.from('pricing_tiers').select('*');
+    if (tiersErr) log('❌ pricing_tiers error: ' + JSON.stringify(tiersErr));
+    else log('✅ pricing_tiers: ' + JSON.stringify(tiers, null, 2));
+
+    log('\n3. Reading app_settings...');
+    const { data: settings, error: setErr } = await sb.from('app_settings').select('*');
+    if (setErr) log('❌ app_settings error: ' + JSON.stringify(setErr));
+    else log('✅ app_settings: ' + JSON.stringify(settings, null, 2));
+
+    log('\n4. Reading app_users...');
+    const { data: users, error: usrErr } = await sb.from('app_users').select('id,email,role');
+    if (usrErr) log('❌ app_users error: ' + JSON.stringify(usrErr));
+    else log('✅ app_users: ' + JSON.stringify(users, null, 2));
+
+    log('\n5. Testing write to app_settings...');
+    const { error: writeErr } = await sb.from('app_settings')
+      .upsert({ key: 'test_write', value: { ok: true, time: new Date().toISOString() }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    if (writeErr) log('❌ Write error: ' + JSON.stringify(writeErr));
+    else log('✅ Write succeeded!');
+
+    log('\n6. Reading team_members...');
+    const { data: team, error: teamErr } = await sb.from('team_members').select('*');
+    if (teamErr) log('❌ team_members error: ' + JSON.stringify(teamErr));
+    else log('✅ team_members: ' + JSON.stringify(team, null, 2));
+
+    log('\n🏁 TEST COMPLETE');
+  } catch (e) {
+    log('❌ FATAL ERROR: ' + e.message);
+  }
+}
+test();
+</script>
+</body></html>
