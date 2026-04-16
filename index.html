@@ -576,7 +576,7 @@ function LoginPage({onLogin}) {
 }
 
 /* ─── ADMIN PANEL ─── */
-function AdminPanel({user, tiers, setTiers, team, setTeam, onVisibilityChange}) {
+function AdminPanel({user, tiers, setTiers, team, setTeam, hiddenSkuSet, onVisibilityChange}) {
   const [tab, setTab] = useState("tiers");
   const [newTier, setNewTier] = useState({name:"",markup:1.30});
   const [editId, setEditId] = useState(null);
@@ -1220,15 +1220,12 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
 
   useEffect(() => {
     if (!parsedItems) {
-      loadSetting('hidden_skus').then(hidden => {
-        const hiddenSet = new Set(hidden || []);
-        const items = existingItems.map(i => ({...i, visible: !hiddenSet.has(i.sku + '|' + i.section)}));
-        setParsedItems(items);
-        setParseStats({rawCount:'—',rootCount:items.length,sections:[...new Set(items.map(i=>i.section))],source:'embedded'});
-        setActiveSec('mouldings');
-      });
+      const items = existingItems.map(i => ({...i, visible: !hiddenSkuSet.has(i.sku + '|' + i.section)}));
+      setParsedItems(items);
+      setParseStats({rawCount:'—',rootCount:items.length,sections:[...new Set(items.map(i=>i.section))],source:'embedded'});
+      setActiveSec('mouldings');
     }
-  }, [existingItems, parsedItems]);
+  }, [existingItems]);
 
   const handleFile = (file) => {
     if (!file) return;
@@ -1881,7 +1878,7 @@ function App() {
       </div>
 
       <div style={{maxWidth:1500,margin:"0 auto",padding:"28px 24px 20px"}}>
-        {page === "admin" && <AdminPanel user={user} tiers={tiers} setTiers={setTiers} team={team} setTeam={setTeam} onVisibilityChange={(hidden) => setHiddenSkuSet(new Set(hidden))}/>}
+        {page === "admin" && <AdminPanel user={user} tiers={tiers} setTiers={setTiers} team={team} setTeam={setTeam} hiddenSkuSet={hiddenSkuSet} onVisibilityChange={(hidden) => setHiddenSkuSet(new Set(hidden))}/>}
         {page === "productadmin" && <ProductAdmin levelVis={levelVis} setLevelVis={setLevelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn} setShowAllPriceLevelsBtn={setShowAllPriceLevelsBtn}/>}
 
         {page === "portal" && (<>
