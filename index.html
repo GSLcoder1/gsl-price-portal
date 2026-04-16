@@ -2015,7 +2015,21 @@ function App() {
 
 
           {sec === "s4s_trimboards" ? (
-            <S4STrimboardsSection allItems={allItems} mult={activeMult} pricingLabel={pricingLabel} levelVis={levelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn}/>
+            <>
+              {/* S4S TRIMBOARDS BANNER — mirrors Hardwood S4S banner style, photo mirrored on right */}
+              <div style={{position:"relative",borderRadius:12,overflow:"hidden",marginBottom:16,border:"1px solid rgba(197,165,90,0.2)",boxShadow:"0 4px 20px rgba(0,0,0,0.4)",background:"#0a0a0a",height:140}}>
+                {/* Platinum Protected boards image — mirrored, right side */}
+                <img src="https://www.gardenstatelumber.com/wp-content/uploads/3-s4s-platinum-protected-s4s-boards-photo.png?ver=2.0" alt="S4S Trimboards" style={{position:"absolute",right:-20,top:0,width:"35%",height:"100%",objectFit:"cover",objectPosition:"30% 50%",filter:"brightness(0.55)",opacity:0.8,transform:"scaleX(-1)"}}/>
+                <div style={{position:"absolute",right:-20,top:0,width:"40%",height:"100%",background:"linear-gradient(90deg,rgba(10,10,10,1) 0%,rgba(10,10,10,0.7) 30%,transparent 70%)"}}/>
+                {/* Text — positioned toward left to balance the right-side image */}
+                <div style={{position:"absolute",left:"38%",top:"50%",transform:"translate(-50%,-50%)",textAlign:"center",zIndex:2}}>
+                  <div style={{fontSize:28,fontWeight:900,color:"#fff",letterSpacing:4,textShadow:"0 2px 12px rgba(0,0,0,0.8)"}}>PRIMED PINE</div>
+                  <div style={{fontSize:20,fontWeight:800,color:"#fff",letterSpacing:3,marginTop:2,textShadow:"0 2px 12px rgba(0,0,0,0.8)"}}>S4S TRIMBOARDS</div>
+                  <div style={{fontSize:12,fontWeight:700,color:GOLD,letterSpacing:3,marginTop:6,textShadow:"0 1px 6px rgba(0,0,0,0.6)"}}>GESSO ELITE · PLATINUM XL · PLATINUM PROTECTED · PEARL COAT 21</div>
+                </div>
+              </div>
+              <S4STrimboardsSection allItems={allItems} mult={activeMult} pricingLabel={pricingLabel} levelVis={levelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn}/>
+            </>
           ) : (
           <div ref={tableRef} style={{background:"rgba(0,0,0,0.2)",borderRadius:12,border:"1px solid rgba(255,255,255,0.06)",overflow:"hidden",animation:"fadeIn 0.2s ease"}}>
             {colOrders[sec] && (
