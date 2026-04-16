@@ -336,12 +336,15 @@ function S4SProductLineSection({line, allItems, mult, pricingLabel, levelVis, sh
               <th style={{padding:"6px 10px",textAlign:"left",color:GOLD,fontWeight:800,fontSize:10,letterSpacing:1,minWidth:90}}>SIZE</th>
               <th style={{padding:"6px 10px",textAlign:"left",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:10,letterSpacing:0.5,minWidth:110}}>ACTUAL</th>
               <th style={{padding:"6px 10px",textAlign:"left",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:10,letterSpacing:0.5,minWidth:100}}>SKU</th>
-              {allLevelNums.map(n => (
-                <th key={n} style={{padding:"6px 8px",textAlign:"center",color:n===1?GOLD:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:9,letterSpacing:0.5,minWidth:75}}>
-                  <div>{n===1?"BASE":levelDescs[n]?.replace(/ PRICE$/i,"").replace(/^\d+\+?\s*/,"") || ("L"+n)}</div>
-                  <div style={{fontSize:8,color:"rgba(255,255,255,0.25)",marginTop:1}}>{levelDescs[n]?.match(/^\d+\+?\s*/)?.[0]||""}</div>
+              {allLevelNums.map(n => {
+                const isSell = mult > 1;
+                const sellHeaderStyle = isSell ? {background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 7s ease-in-out infinite",color:"#000",borderRadius:3} : {};
+                return (
+                <th key={n} style={{padding:"6px 8px",textAlign:"center",fontWeight:800,fontSize:9,letterSpacing:0.5,minWidth:75,...sellHeaderStyle,...(!isSell && {color:n===1?GOLD:"rgba(255,255,255,0.5)"})}}>
+                  <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{n===1?"BASE":levelDescs[n]?.replace(/ PRICE$/i,"").replace(/^\d+\+?\s*/,"") || ("L"+n)}</div>
+                  <div style={{fontSize:8,color:isSell?"rgba(0,0,0,0.5)":"rgba(255,255,255,0.25)",marginTop:1}}>{levelDescs[n]?.match(/^\d+\+?\s*/)?.[0]||""}</div>
                 </th>
-              ))}
+              )})}
               <th style={{padding:"6px 8px",textAlign:"center",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:9,minWidth:60}}>UNIT QTY</th>
               <th style={{padding:"6px 8px",textAlign:"left",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:9,minWidth:80}}>LENGTHS</th>
             </tr></thead>
@@ -357,10 +360,11 @@ function S4SProductLineSection({line, allItems, mult, pricingLabel, levelVis, sh
                     if (!lv) return <td key={n} style={{padding:"6px 8px",textAlign:"center"}}></td>;
                     const price = lv.price * mult;
                     const isLF = s.uom === "LF";
-                    /* When mult > 1 → Customer Sell → white; otherwise GSL Cost → gold/purple */
-                    const color = mult > 1 ? "#fff" : (isLF ? GOLD : "#b088ff");
+                    /* When mult > 1 → Customer Sell — keep colors, bold; otherwise GSL Cost → gold/purple */
+                    const color = isLF ? GOLD : "#b088ff";
+                    const fw = mult > 1 ? 900 : 700;
                     return (
-                      <td key={n} style={{padding:"6px 8px",textAlign:"center",fontFamily:"'IBM Plex Mono',monospace",fontSize:13,fontWeight:700,color}}>
+                      <td key={n} style={{padding:"6px 8px",textAlign:"center",fontFamily:"'IBM Plex Mono',monospace",fontSize:13,fontWeight:fw,color}}>
                         ${price.toFixed(2)}<span style={{fontSize:10,fontWeight:700,color,marginLeft:1,opacity:0.7}}>/{s.uom.toLowerCase()}</span>
                       </td>
                     );
@@ -547,13 +551,14 @@ function fmtCell(mi, mult) {
   const pr = p * mult;
   const pc = u !== "LF";
   const ul = {PC:"PC",EA:"EA",BOX:"BOX",PAK:"PAK",PR:"PR",LF:"LF"}[u]||u;
-  /* When multiplier > 1, we're showing Customer Sell — use white text.
+  /* When multiplier > 1, we're showing Customer Sell — keep original colors, bold the price.
      When multiplier <= 1, we're showing GSL Cost — use gold (LF) or purple (PC/EA/etc) */
-  if (mult > 1) {
-    return {t:`$${pr.toFixed(2)}`,c:"#fff",sub:`/${ul}`,uomColor:"rgba(255,255,255,0.5)"};
-  }
   const uomColor = pc ? "#b088ff" : GOLD;
-  return {t:`$${pr.toFixed(2)}`,c: pc?"#b088ff":GOLD,sub:`/${ul}`,uomColor};
+  const baseColor = pc ? "#b088ff" : GOLD;
+  if (mult > 1) {
+    return {t:`$${pr.toFixed(2)}`,c:baseColor,sub:`/${ul}`,uomColor,bold:true};
+  }
+  return {t:`$${pr.toFixed(2)}`,c:baseColor,sub:`/${ul}`,uomColor,bold:false};
 }
 
 /* ─── LOGIN PAGE ─── */
@@ -869,7 +874,7 @@ function Lookup({mult, allItems, pricingLabel, levelVis, showAllPriceLevelsBtn, 
                 <thead><tr style={{borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
                   <th style={{padding:"8px 12px",textAlign:"center",color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:700,letterSpacing:1}}>SUBSTRATE</th>
                   <th style={{padding:"8px 12px",textAlign:"center",color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:700,letterSpacing:1}}>FULL SKU</th>
-                  <th style={{padding:"8px 12px",textAlign:"center",color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:700,letterSpacing:1}}><div>{mult > 1 ? "CUSTOMER SELL" : "GSL COST"}</div>{mult > 1 && !selling && <div style={{fontSize:9,fontWeight:600,color:GOLD,marginTop:2}}>{pricingLabel}</div>}{mult > 1 && selling && <div style={{fontSize:9,fontWeight:600,color:GOLD,marginTop:2}}>{pricingLabel}</div>}</th>
+                  <th style={{padding:"8px 12px",textAlign:"center",fontSize:10,fontWeight:800,letterSpacing:1,...(mult > 1 ? {background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 7s ease-in-out infinite",color:"#000",borderRadius:3} : {color:"rgba(255,255,255,0.6)"})}}><div style={{textAlign:"center"}}>{mult > 1 ? <><div>CUSTOMER</div><div>SELL</div></> : "GSL COST"}</div>{mult > 1 && <div style={{fontSize:9,fontWeight:700,color:mult > 1 ? "rgba(0,0,0,0.6)" : GOLD,marginTop:2}}>{pricingLabel}</div>}</th>
                   <th style={{padding:"8px 12px",textAlign:"center",color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:700,letterSpacing:1}}>LENGTHS</th>
                   <th style={{padding:"8px 12px",textAlign:"center",color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:700,letterSpacing:1}}>UNIT QTY</th>
                 </tr></thead>
@@ -882,7 +887,7 @@ function Lookup({mult, allItems, pricingLabel, levelVis, showAllPriceLevelsBtn, 
                   return (<tr key={col} style={{borderBottom:"1px solid rgba(255,255,255,0.03)"}}>
                     <td style={{padding:"8px 12px",textAlign:"center"}}><span style={{display:"inline-block",padding:"4px 12px",borderRadius:4,background:ms.bg,color:ms.color,fontSize:11,fontWeight:700,border:"1px solid "+ms.border,minWidth:90,textAlign:"center"}}>{sec.cn[i]}</span></td>
                     <td style={{padding:"8px 12px",textAlign:"center",fontFamily:"'IBM Plex Mono',monospace",fontSize:13,fontWeight:600,color:"rgba(255,255,255,0.8)"}}>{mat.s}</td>
-                    <td style={{padding:"8px 12px",textAlign:"center",fontFamily:"'IBM Plex Mono',monospace",fontSize:15,fontWeight:700,color:cell.c}}>{cell.t}<span style={{fontSize:11,fontWeight:700,color:cell.uomColor,marginLeft:2}}>{cell.sub}</span></td>
+                    <td style={{padding:"8px 12px",textAlign:"center",fontFamily:"'IBM Plex Mono',monospace",fontSize:15,fontWeight:cell.bold?900:700,color:cell.c}}>{cell.t}<span style={{fontSize:11,fontWeight:700,color:cell.uomColor,marginLeft:2}}>{cell.sub}</span></td>
                     <td style={{padding:"8px 12px",textAlign:"center",fontFamily:"'IBM Plex Mono',monospace",fontSize:13,fontWeight:600,color:"rgba(255,255,255,0.7)"}}>{fmtLengths(mat.l)}</td>
                     <td style={{padding:"8px 12px",textAlign:"center",fontFamily:"'IBM Plex Mono',monospace",fontSize:13,fontWeight:600,color:"rgba(255,255,255,0.7)"}}>{unitQty>0?(unitQty+" "+unitUom):""}</td>
                   </tr>);
@@ -913,7 +918,7 @@ function Lookup({mult, allItems, pricingLabel, levelVis, showAllPriceLevelsBtn, 
                 <div style={{display:"flex",alignItems:"flex-end",gap:12}}>
                   <div style={{textAlign:"right"}}>
                     {mult > 1 ? (
-                      <div style={{marginBottom:3}}><span style={{fontSize:13,color:"#fff",fontWeight:800}}>CUSTOMER SELL</span> <span style={{fontSize:12,color:"rgba(255,255,255,0.55)",fontWeight:700}}>= Cost to your customer</span></div>
+                      <div style={{marginBottom:3}}><span style={{fontSize:13,fontWeight:900,color:"#000",padding:"3px 10px",borderRadius:4,background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 7s ease-in-out infinite",letterSpacing:1}}>CUSTOMER SELL</span> <span style={{fontSize:12,color:"rgba(255,255,255,0.55)",fontWeight:700}}>= Cost to your customer</span></div>
                     ) : (
                       <div style={{marginBottom:3}}><span style={{fontSize:13,color:GOLD,fontWeight:800}}>GSL COST</span> <span style={{fontSize:12,color:"rgba(255,255,255,0.55)",fontWeight:700}}>= Your cost from GSL</span></div>
                     )}
@@ -938,7 +943,10 @@ function Lookup({mult, allItems, pricingLabel, levelVis, showAllPriceLevelsBtn, 
                       <th style={{padding:"5px 10px",fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.35)",letterSpacing:0.8,textAlign:"left",borderBottom:"1px solid rgba(197,165,90,0.15)",position:"sticky",left:0,background:"#0A0A0A",zIndex:2}}></th>
                       {allPricesData.mats.map(m => (
                         mult > 1 ? (
-                          <th key={m.col+"_s"} colSpan={2} style={{padding:"5px 8px",fontSize:11,fontWeight:800,color:"#fff",letterSpacing:0.8,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.15)",borderLeft:"1px solid rgba(255,255,255,0.06)",minWidth:80}}>SELL {selling?"":"("}<span style={{color:GOLD,fontWeight:700}}>{selling?"":mult.toFixed(2)}{selling?"":"\u00D7"}</span>{selling?"":")"}
+                          <th key={m.col+"_s"} colSpan={2} style={{padding:"5px 8px",fontSize:11,fontWeight:900,color:"#000",letterSpacing:0.8,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.15)",borderLeft:"1px solid rgba(255,255,255,0.06)",minWidth:80,background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 7s ease-in-out infinite",borderRadius:3}}><div style={{textAlign:"center"}}><div>CUSTOMER</div><div>SELL</div></div>{!selling && <div style={{fontSize:9,fontWeight:700,color:"rgba(0,0,0,0.6)",marginTop:1}}>({mult.toFixed(2)}{"\u00D7"})</div>}
+                          </th>
+                        ) : (
+                          <th key={m.col+"_c"} colSpan={2} style={{padding:"5px 8px",fontSize:11,fontWeight:800,color:GOLD,letterSpacing:0.8,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.15)",borderLeft:"1px solid rgba(255,255,255,0.06)",minWidth:80}}>COST</th>
                           </th>
                         ) : (
                           <th key={m.col+"_c"} colSpan={2} style={{padding:"5px 8px",fontSize:11,fontWeight:800,color:GOLD,letterSpacing:0.8,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.15)",borderLeft:"1px solid rgba(255,255,255,0.06)",minWidth:80}}>COST</th>
@@ -970,9 +978,10 @@ function Lookup({mult, allItems, pricingLabel, levelVis, showAllPriceLevelsBtn, 
                             const cost = lv.price;
                             const sell = cost * mult;
                             const displayPrice = mult > 1 ? sell : cost;
-                            const displayColor = mult > 1 ? "#fff" : priceColor;
+                            const displayColor = priceColor;
+                            const displayWeight = mult > 1 ? 900 : 700;
                             return (
-                              <td key={m.col+"_p_"+levelNum} colSpan={2} style={{padding:"7px 8px",textAlign:"center",borderLeft:"1px solid rgba(255,255,255,0.06)",fontFamily:"'IBM Plex Mono',monospace",fontSize:14,fontWeight:700,color:displayColor}}>{cost===0?"Call":("$"+displayPrice.toFixed(2))}<span style={{fontSize:10,color:displayColor,opacity:0.6,marginLeft:2}}>{"/"}{m.uom}</span></td>
+                              <td key={m.col+"_p_"+levelNum} colSpan={2} style={{padding:"7px 8px",textAlign:"center",borderLeft:"1px solid rgba(255,255,255,0.06)",fontFamily:"'IBM Plex Mono',monospace",fontSize:14,fontWeight:displayWeight,color:displayColor}}>{cost===0?"Call":("$"+displayPrice.toFixed(2))}<span style={{fontSize:10,color:displayColor,opacity:0.6,marginLeft:2}}>{"/"}{m.uom}</span></td>
                             );
                           })}
                         </tr>
@@ -1879,6 +1888,7 @@ function App() {
         @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
         @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
         @keyframes tabShine{0%{background-position:-200% center}100%{background-position:200% center}}
+        @keyframes sellShimmer{0%{background-position:-200% center}100%{background-position:200% center}}
         *{box-sizing:border-box;font-family:'Archivo',sans-serif}
         ::-webkit-scrollbar{width:5px;height:5px}
         ::-webkit-scrollbar-thumb{background:rgba(197,165,90,0.2);border-radius:3px}
@@ -2022,7 +2032,7 @@ function App() {
                       </td>
                       <td style={{padding:"12px 14px",fontFamily:"'IBM Plex Mono',monospace",fontSize:14,fontWeight:800,color:"#fff",position:"sticky",left:36,background:rowBg,zIndex:1}}>{sku}</td>
                       <td style={{padding:"12px 14px",color:"rgba(255,255,255,0.85)",fontSize:13,fontWeight:600}}>{desc}</td>
-                      {orderedCols.map((c,ci) => { const cell = fmtCell(mats[c.col], activeMult); const colTint = ci%2===0?"rgba(255,255,255,0.008)":"transparent"; if (!cell) return <td key={c.col} style={{padding:"12px 6px",textAlign:"center",fontSize:14,background:colTint}}></td>; const isPurple = cell.c==="#b088ff"; return <td key={c.col} style={{padding:"12px 6px",textAlign:"center",fontFamily:"'IBM Plex Mono',monospace",fontSize:15,fontWeight:700,color:cell.c,textShadow:isPurple?"0 0 8px rgba(176,136,255,0.4)":"none",background:colTint}}>{cell.t}<span style={{fontSize:12,fontWeight:700,color:cell.uomColor,marginLeft:1,textShadow:isPurple?"0 0 8px rgba(176,136,255,0.4)":"none"}}>{cell.sub}</span></td>; })}
+                      {orderedCols.map((c,ci) => { const cell = fmtCell(mats[c.col], activeMult); const colTint = ci%2===0?"rgba(255,255,255,0.008)":"transparent"; if (!cell) return <td key={c.col} style={{padding:"12px 6px",textAlign:"center",fontSize:14,background:colTint}}></td>; const isPurple = cell.c==="#b088ff"; return <td key={c.col} style={{padding:"12px 6px",textAlign:"center",fontFamily:"'IBM Plex Mono',monospace",fontSize:15,fontWeight:cell.bold?900:700,color:cell.c,textShadow:isPurple?"0 0 8px rgba(176,136,255,0.4)":"none",background:colTint}}>{cell.t}<span style={{fontSize:12,fontWeight:700,color:cell.uomColor,marginLeft:1,textShadow:isPurple?"0 0 8px rgba(176,136,255,0.4)":"none"}}>{cell.sub}</span></td>; })}
                     </tr>,
                     isOpen && (
                     <tr key={sku+"_detail"} style={{background:"linear-gradient(145deg,rgba(0,0,0,0.5),rgba(12,31,14,0.25))",borderBottom:"2px solid rgba(197,165,90,0.15)"}}>
@@ -2076,7 +2086,10 @@ function App() {
                                         <th style={{padding:"4px 8px",borderBottom:"1px solid rgba(197,165,90,0.12)",position:"sticky",left:0,background:"rgba(0,0,0,0.6)",zIndex:2}}></th>
                                         {activeMats.map(m => (
                                           activeMult > 1 ? (
-                                            <th key={m.col+"_s"} colSpan={2} style={{padding:"4px 6px",fontSize:10,fontWeight:800,color:"#fff",letterSpacing:0.5,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.12)",borderLeft:"1px solid rgba(255,255,255,0.05)",minWidth:70}}>CUSTOMER SELL {selling?"":"("}<span style={{color:GOLD,fontWeight:700}}>{selling?"":activeMult.toFixed(2)}{selling?"":"\u00D7"}</span>{selling?"":")"}
+                                            <th key={m.col+"_s"} colSpan={2} style={{padding:"4px 6px",fontSize:10,fontWeight:900,color:"#000",letterSpacing:0.5,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.12)",borderLeft:"1px solid rgba(255,255,255,0.05)",minWidth:70,background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 7s ease-in-out infinite",borderRadius:3}}><div style={{textAlign:"center"}}><div>CUSTOMER</div><div>SELL</div></div>{!selling && <div style={{fontSize:8,fontWeight:700,color:"rgba(0,0,0,0.6)",marginTop:1}}>({activeMult.toFixed(2)}{"\u00D7"})</div>}
+                                            </th>
+                                          ) : (
+                                            <th key={m.col+"_c"} colSpan={2} style={{padding:"4px 6px",fontSize:10,fontWeight:800,color:GOLD,letterSpacing:0.5,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.12)",borderLeft:"1px solid rgba(255,255,255,0.05)",minWidth:70}}>GSL COST</th>
                                             </th>
                                           ) : (
                                             <th key={m.col+"_c"} colSpan={2} style={{padding:"4px 6px",fontSize:10,fontWeight:800,color:GOLD,letterSpacing:0.5,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.12)",borderLeft:"1px solid rgba(255,255,255,0.05)",minWidth:70}}>GSL COST</th>
@@ -2109,10 +2122,11 @@ function App() {
                                               const sellPrice = costPrice * activeMult;
                                               const ul = {PC:"PC",EA:"EA",BOX:"BOX",PAK:"PAK",PR:"PR",LF:"LF"}[m.uom]||m.uom;
                                               const displayPrice = activeMult > 1 ? sellPrice : costPrice;
-                                              const displayColor = activeMult > 1 ? "#fff" : priceColor;
+                                              const displayColor = priceColor;
+                                              const displayWeight = activeMult > 1 ? 900 : 700;
                                               return (
                                                 <td key={m.col+"_p_"+levelNum} colSpan={2} style={{padding:"5px 6px",textAlign:"center",fontFamily:"'IBM Plex Mono',monospace",borderLeft:"1px solid rgba(255,255,255,0.05)"}}>
-                                                  <span style={{fontSize:13,fontWeight:700,color:displayColor}}>${displayPrice.toFixed(2)}</span><span style={{fontSize:10,fontWeight:600,color:displayColor,opacity:0.7}}>/{ul}</span>
+                                                  <span style={{fontSize:13,fontWeight:displayWeight,color:displayColor}}>${displayPrice.toFixed(2)}</span><span style={{fontSize:10,fontWeight:600,color:displayColor,opacity:0.7}}>/{ul}</span>
                                                 </td>
                                               );
                                             })}
