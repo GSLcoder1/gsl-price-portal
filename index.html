@@ -576,7 +576,7 @@ function LoginPage({onLogin}) {
 }
 
 /* ─── ADMIN PANEL ─── */
-function AdminPanel({user, tiers, setTiers, team, setTeam}) {
+function AdminPanel({user, tiers, setTiers, team, setTeam, onVisibilityChange}) {
   const [tab, setTab] = useState("tiers");
   const [newTier, setNewTier] = useState({name:"",markup:1.30});
   const [editId, setEditId] = useState(null);
@@ -615,7 +615,7 @@ function AdminPanel({user, tiers, setTiers, team, setTeam}) {
               </div>
               <div style={{flex:"0 0 100px"}}>
                 <label style={{fontSize:9,color:GOLD,fontWeight:600,display:"block",marginBottom:3}}>MARKUP</label>
-                <input type="number" step="0.05" min="1" max="5" value={editMarkup.toFixed(2)} onChange={e=>setEditMarkup(parseFloat(e.target.value)||1)} onKeyDown={e=>{if(e.key==="Enter")saveEdit()}}
+                <input type="number" step="0.05" min="1" max="5" value={editMarkup} onChange={e=>setEditMarkup(parseFloat(e.target.value)||1)} onKeyDown={e=>{if(e.key==="Enter")saveEdit()}}
                   style={{width:"100%",padding:"8px 12px",borderRadius:6,border:"1px solid rgba(197,165,90,0.3)",background:"rgba(0,0,0,0.4)",color:GOLD,fontSize:14,fontFamily:"'IBM Plex Mono',monospace",outline:"none",textAlign:"center",fontWeight:700}}/>
               </div>
               <div style={{flex:"0 0 70px",textAlign:"center"}}>
@@ -641,7 +641,7 @@ function AdminPanel({user, tiers, setTiers, team, setTeam}) {
           <div style={{fontSize:12,fontWeight:700,color:GOLD,letterSpacing:1,marginBottom:12}}>ADD NEW TIER</div>
           <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
             <div style={{flex:"1 1 180px"}}><label style={{fontSize:10,color:"rgba(255,255,255,0.4)",fontWeight:600,display:"block",marginBottom:4}}>Tier Name</label><input value={newTier.name} onChange={e=>setNewTier({...newTier,name:e.target.value})} onKeyDown={e=>{if(e.key==="Enter")addTier()}} placeholder="e.g. Homeowner, Contractor..." style={{width:"100%",padding:"10px 14px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#fff",fontSize:13,outline:"none"}}/></div>
-            <div style={{flex:"0 0 120px"}}><label style={{fontSize:10,color:"rgba(255,255,255,0.4)",fontWeight:600,display:"block",marginBottom:4}}>Markup</label><input type="number" step="0.05" min="1" max="5" value={newTier.markup.toFixed(2)} onChange={e=>setNewTier({...newTier,markup:parseFloat(e.target.value)||1})} style={{width:"100%",padding:"10px 14px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:GOLD,fontSize:14,fontFamily:"'IBM Plex Mono',monospace",outline:"none",textAlign:"center",fontWeight:700}}/></div>
+            <div style={{flex:"0 0 120px"}}><label style={{fontSize:10,color:"rgba(255,255,255,0.4)",fontWeight:600,display:"block",marginBottom:4}}>Markup</label><input type="number" step="0.05" min="1" max="5" value={newTier.markup} onChange={e=>setNewTier({...newTier,markup:parseFloat(e.target.value)||1})} style={{width:"100%",padding:"10px 14px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:GOLD,fontSize:14,fontFamily:"'IBM Plex Mono',monospace",outline:"none",textAlign:"center",fontWeight:700}}/></div>
             <div style={{flex:"0 0 90px",textAlign:"center"}}><label style={{fontSize:10,color:"rgba(255,255,255,0.4)",fontWeight:600,display:"block",marginBottom:4}}>Margin</label><div style={{padding:"10px",fontSize:14,fontWeight:700,color:GOLD,fontFamily:"'IBM Plex Mono',monospace"}}>{markupToMargin(newTier.markup)}%</div></div>
             <button onClick={addTier} style={{padding:"10px 20px",borderRadius:6,border:"none",background:GOLD,color:G,fontSize:12,fontWeight:800,cursor:"pointer",letterSpacing:1}}>+ Add Tier</button>
           </div>
@@ -1219,9 +1219,13 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
 
   useEffect(() => {
     if (!parsedItems) {
-      setParsedItems(existingItems);
-      setParseStats({rawCount:'—',rootCount:existingItems.length,sections:[...new Set(existingItems.map(i=>i.section))],source:'embedded'});
-      setActiveSec('mouldings');
+      loadSetting('hidden_skus').then(hidden => {
+        const hiddenSet = new Set(hidden || []);
+        const items = existingItems.map(i => ({...i, visible: !hiddenSet.has(i.sku + '|' + i.section)}));
+        setParsedItems(items);
+        setParseStats({rawCount:'—',rootCount:items.length,sections:[...new Set(items.map(i=>i.section))],source:'embedded'});
+        setActiveSec('mouldings');
+      });
     }
   }, [existingItems, parsedItems]);
 
@@ -1241,10 +1245,22 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
 
   const handleDrop = (e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]); };
   const toggleVisibility = (sku, section) => {
-    setParsedItems(prev => prev.map(i => i.sku===sku && i.section===section ? {...i, visible:!i.visible} : i));
+    setParsedItems(prev => {
+      const next = prev.map(i => i.sku===sku && i.section===section ? {...i, visible:!i.visible} : i);
+      const hidden = next.filter(i => !i.visible).map(i => i.sku + '|' + i.section);
+      saveSetting('hidden_skus', hidden);
+      if (onVisibilityChange) onVisibilityChange(hidden);
+      return next;
+    });
   };
   const toggleAllInSection = (sec, visible) => {
-    setParsedItems(prev => prev.map(i => i.section===sec ? {...i, visible} : i));
+    setParsedItems(prev => {
+      const next = prev.map(i => i.section===sec ? {...i, visible} : i);
+      const hidden = next.filter(i => !i.visible).map(i => i.sku + '|' + i.section);
+      saveSetting('hidden_skus', hidden);
+      if (onVisibilityChange) onVisibilityChange(hidden);
+      return next;
+    });
   };
 
   const secItems = useMemo(() => {
@@ -1602,6 +1618,12 @@ function App() {
   const setSellingTier = (v) => setSectionPricing(prev => ({...prev, [sec]: {...getSecPricing(sec), sellingTier: v}}));
   const setManualMarkup = (v) => setSectionPricing(prev => ({...prev, [sec]: {...getSecPricing(sec), manualMarkup: typeof v === 'function' ? v(getSecPricing(sec).manualMarkup) : v}}));
   const ps = 50;
+  const [hiddenSkuSet, setHiddenSkuSet] = useState(new Set());
+  useEffect(() => {
+    loadSetting('hidden_skus').then(hidden => {
+      if (hidden && hidden.length > 0) setHiddenSkuSet(new Set(hidden));
+    });
+  }, []);
 
   /* ─── TIERS: loaded from Supabase pricing_tiers table ─────────────────
      On mount, we fetch tiers from the database. Falls back to defaults
@@ -1670,9 +1692,11 @@ function App() {
 
   const sObj = SECTIONS.find(s=>s.key===sec);
   const items = useMemo(() => CAT[sec] || [], [sec]);
-  const allItems = useMemo(() => { const r = []; SECTIONS.forEach(s=>(CAT[s.key]||[]).forEach(([sku,desc,mats])=>r.push({sku,desc,mats,section:s.label,secKey:s.key}))); return r; }, []);
+  const allItems = useMemo(() => { const r = []; SECTIONS.forEach(s=>(CAT[s.key]||[]).forEach(([sku,desc,mats])=>{ if (!hiddenSkuSet.has(sku+'|'+s.key)) r.push({sku,desc,mats,section:s.label,secKey:s.key}); })); return r; }, [hiddenSkuSet]);
   const filtered = useMemo(() => {
     let f = items;
+    // Filter out hidden products from admin
+    if (hiddenSkuSet.size > 0) f = f.filter(([sku]) => !hiddenSkuSet.has(sku + '|' + sec));
     // S4S substrate filter
     if (sec === "s4s_trimboards" && s4sFilter) {
       if (s4sFilter === "xlp_30yr") {
@@ -1685,7 +1709,7 @@ function App() {
     }
     if (srch) { const s = srch.toLowerCase(); f = f.filter(([sku,desc])=>sku.toLowerCase().includes(s)||desc.toLowerCase().includes(s)); }
     return f;
-  }, [items, srch, sec, s4sFilter]);
+  }, [items, srch, sec, s4sFilter, hiddenSkuSet]);
   const visible = useMemo(()=>filtered.slice(0,(pg+1)*ps),[filtered,pg]);
   const hasMore = visible.length < filtered.length;
   const tp = Math.ceil(filtered.length/ps)||1;
@@ -1856,7 +1880,7 @@ function App() {
       </div>
 
       <div style={{maxWidth:1500,margin:"0 auto",padding:"28px 24px 20px"}}>
-        {page === "admin" && <AdminPanel user={user} tiers={tiers} setTiers={setTiers} team={team} setTeam={setTeam}/>}
+        {page === "admin" && <AdminPanel user={user} tiers={tiers} setTiers={setTiers} team={team} setTeam={setTeam} onVisibilityChange={(hidden) => setHiddenSkuSet(new Set(hidden))}/>}
         {page === "productadmin" && <ProductAdmin levelVis={levelVis} setLevelVis={setLevelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn} setShowAllPriceLevelsBtn={setShowAllPriceLevelsBtn}/>}
 
         {page === "portal" && (<>
