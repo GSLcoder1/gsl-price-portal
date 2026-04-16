@@ -181,8 +181,10 @@ const S4S_PRODUCT_LINES = [
   {
     key:"gesso_elite",
     name:"Gesso Elite",
-    logoSrc:"https://www.gardenstatelumber.com/wp-content/uploads/gsl-s4s-gesso-elite-logo.png?ver=2.0",
+    logoSrc:"https://www.gardenstatelumber.com/wp-content/uploads/gsl-s4s-gesso-elite-logo_dark_2000px_transparency.png",
     matKey:"ge_s4s",
+    gradient:"linear-gradient(145deg, #000 0%, #000 40%, #0C1F0E 100%)",
+    accentColor:"#2A6B3A",
     desc:"Introducing our newest line of exceptional Primed Radiata Pine S4S boards featuring 2 coats of exterior gesso coat primer + 1 coat of exterior acrylic latex primer! Stocking both 4/4\" and 5/4\" thicknesses across all widths in 8' and 16' lengths.",
     skuPrefixes:["GSL"],
     sizes:[
@@ -205,8 +207,10 @@ const S4S_PRODUCT_LINES = [
   {
     key:"platinum_xl",
     name:"Platinum XL",
-    logoSrc:"https://www.gardenstatelumber.com/wp-content/uploads/gsl-s4s-platinum-XL-logo.png?ver=2.0",
+    logoSrc:"https://www.gardenstatelumber.com/wp-content/uploads/gsl-s4s-platinum-XL-logo_dark_2000px_transparency.png",
     matKey:"platinum_xl",
+    gradient:"linear-gradient(145deg, #000 0%, #000 40%, #0A1528 100%)",
+    accentColor:"#2A4A8B",
     desc:"The Platinum XL line is the flagship line in our family of interior/exterior S4S trimboards. Made from a clear finger-joint Radiata substrate and Coated with 1 pass of exterior Gesso Primer + 2 passes of vacuum coated exterior bright white, acrylic latex water based primer, the Platinum XL line is ideal for both interior and exterior applications.",
     skuPrefixes:["LTX","D1PRF","D2PRF","D3PRF","D4PRF","D5PRF"],
     sizes:[
@@ -233,18 +237,21 @@ const S4S_PRODUCT_LINES = [
   {
     key:"platinum_protected",
     name:"Platinum Protected",
-    logoSrc:"https://www.gardenstatelumber.com/wp-content/uploads/gsl-s4s-platinum-protected-logo.png?ver=2.0",
+    logoSrc:"https://www.gardenstatelumber.com/wp-content/uploads/gsl-s4s-platinum-protected-logo_dark_2000px_transparency.png",
     matKey:"xlp_30yr",
+    gradient:"linear-gradient(145deg, #000 0%, #000 40%, #1A0A28 100%)",
+    accentColor:"#6B2A8B",
+    warning:"Not for use in an exterior siding application with direct exposure to the elements. Any use in those applications will void any and all warranties.",
     desc:"Providing unparalleled protection against rot, fungus, mold, mildew, and even termites, PLATINUM PROTECTED stands apart from other trim products for its multi-phase protection process that covers all four sides of the substrate and ensures the ultimate in defense against the natural environment. Made from a clear finger-joint Radiata substrate and Coated with 1 pass of exterior Gesso Primer + 2 passes of vacuum coated exterior bright white, acrylic latex water based primer.",
     skuPrefixes:["XLP"],
     sizes:[
-      {nominal:"1 x 3",actual:"3/4 x 2-1/2",sku:"XLP13"},
-      {nominal:"1 x 4",actual:"3/4 x 3-1/2",sku:"XLP14"},
-      {nominal:"1 x 5",actual:"3/4 x 4-1/2",sku:"XLP15"},
-      {nominal:"1 x 6",actual:"3/4 x 5-1/2",sku:"XLP16"},
-      {nominal:"1 x 8",actual:"3/4 x 7-1/4",sku:"XLP18"},
-      {nominal:"1 x 10",actual:"3/4 x 9-1/4",sku:"XLP110"},
-      {nominal:"1 x 12",actual:"3/4 x 11-1/4",sku:"XLP112"},
+      {nominal:"1 x 3",actual:"23/32 x 2-1/2",sku:"XLP13"},
+      {nominal:"1 x 4",actual:"23/32 x 3-1/2",sku:"XLP14"},
+      {nominal:"1 x 5",actual:"23/32 x 4-1/2",sku:"XLP15"},
+      {nominal:"1 x 6",actual:"23/32 x 5-1/2",sku:"XLP16"},
+      {nominal:"1 x 8",actual:"23/32 x 7-1/4",sku:"XLP18"},
+      {nominal:"1 x 10",actual:"23/32 x 9-1/4",sku:"XLP110"},
+      {nominal:"1 x 12",actual:"23/32 x 11-1/4",sku:"XLP112"},
       {nominal:"5/4 x 4",actual:"1-1/8 x 3-1/2",sku:"XLP544"},
       {nominal:"5/4 x 6",actual:"1-1/8 x 5-1/2",sku:"XLP546"},
       {nominal:"5/4 x 8",actual:"1-1/8 x 7-1/4",sku:"XLP548"},
@@ -255,8 +262,10 @@ const S4S_PRODUCT_LINES = [
   {
     key:"pearl_coat_21",
     name:"Pearl Coat 21",
-    logoSrc:"https://www.gardenstatelumber.com/wp-content/uploads/gsl-s4s-pearl-coat-21-logo.png?ver=2.0",
+    logoSrc:"https://www.gardenstatelumber.com/wp-content/uploads/gsl-s4s-pearl-coat-21-logo_dark_2000px_transparency.png",
     matKey:"s4s_21",
+    gradient:"linear-gradient(145deg, #000 0%, #000 40%, #28200A 100%)",
+    accentColor:"#8B7A2A",
     desc:"Introducing our newest line of 21/32\" Primed Radiata Pine S4S boards featuring 2 coats of exterior gesso coat primer + 1 coat of exterior acrylic latex primer!",
     skuPrefixes:["S4S"],
     sizes:[
@@ -381,12 +390,17 @@ function S4SProductLineSection({line, allItems, mult, pricingLabel, levelVis, sh
   };
 
   return (
-    <div style={{background:"linear-gradient(145deg,#000 0%,#0C1F0E 100%)",borderRadius:14,border:"1px solid rgba(197,165,90,0.2)",marginBottom:20,overflow:"hidden"}}>
+    <div style={{background:line.gradient||"linear-gradient(145deg,#000 0%,#0C1F0E 100%)",borderRadius:14,border:"1px solid rgba(197,165,90,0.2)",marginBottom:20,overflow:"hidden",boxShadow:line.accentColor?`0 0 30px ${line.accentColor}15`:"none"}}>
       {/* Header with logo + description */}
-      <div onClick={()=>setExpanded(!expanded)} style={{cursor:"pointer",display:"flex",alignItems:"center",gap:16,padding:"16px 20px",borderBottom:expanded?"1px solid rgba(197,165,90,0.1)":"none",background:"linear-gradient(135deg,rgba(197,165,90,0.06),rgba(0,0,0,0.3))"}}>
+      <div onClick={()=>setExpanded(!expanded)} style={{cursor:"pointer",display:"flex",alignItems:"center",gap:16,padding:"16px 20px",borderBottom:expanded?"1px solid rgba(197,165,90,0.1)":"none",background:`linear-gradient(135deg,${line.accentColor||"rgba(197,165,90,0.06)"}10,rgba(0,0,0,0.3))`}}>
         <img src={line.logoSrc} alt={line.name} style={{height:50,width:"auto",flexShrink:0,filter:"brightness(1.1)"}} onError={e=>{e.target.style.display='none'}}/>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",lineHeight:1.5,maxHeight:expanded?200:36,overflow:"hidden",transition:"max-height 0.3s ease"}}>{line.desc}</div>
+          {line.warning && expanded && (
+            <div style={{marginTop:8,padding:"8px 12px",background:"rgba(255,60,60,0.08)",border:"1px solid rgba(255,60,60,0.25)",borderRadius:6,fontSize:10,fontWeight:700,color:"#ff6b6b",lineHeight:1.5,letterSpacing:0.3}}>
+              ⚠ {line.warning}
+            </div>
+          )}
         </div>
         <div style={{flexShrink:0,display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:11,fontFamily:"'IBM Plex Mono',monospace",color:GOLD,fontWeight:700}}>{resolvedSizes.length} SKUs</span>
@@ -397,8 +411,8 @@ function S4SProductLineSection({line, allItems, mult, pricingLabel, levelVis, sh
       {/* Pricing grid */}
       {expanded && (
         <div style={{padding:"16px 20px",animation:"fadeIn 0.2s ease"}}>
-          {renderGroup("4/4\" (1x) Boards", fourFourSizes)}
           {halfSizes.length > 0 && renderGroup("1/2\" Boards", halfSizes)}
+          {renderGroup("4/4\" (1x) Boards", fourFourSizes)}
           {renderGroup("5/4\" Boards", fiveQuarterSizes)}
         </div>
       )}
