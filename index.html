@@ -183,8 +183,9 @@ const S4S_PRODUCT_LINES = [
     name:"Platinum Protected",
     logoSrc:"https://www.gardenstatelumber.com/wp-content/uploads/gsl-s4s-platinum-protected-logo_dark_2000px_transparency.png",
     matKey:"xlp_30yr",
-    gradient:"linear-gradient(145deg, #000 0%, #000 40%, #1A0A28 100%)",
+    gradient:"linear-gradient(145deg, #000 0%, #0A0412 30%, #2D0F47 100%)",
     accentColor:"#6B2A8B",
+    accentColorBright:"#C77DFF",
     desc:"Providing unparalleled protection against rot, fungus, mold, mildew, and even termites, PLATINUM PROTECTED stands apart from other trim products for its multi-phase protection process that covers all four sides of the substrate and ensures the ultimate in defense against the natural environment. Made from a clear finger-joint Radiata substrate and Coated with 1 pass of exterior Gesso Primer + 2 passes of vacuum coated exterior bright white, acrylic latex water based primer.",
     skuPrefixes:["XLP"],
     sizes:[
@@ -207,8 +208,9 @@ const S4S_PRODUCT_LINES = [
     name:"Platinum XL",
     logoSrc:"https://www.gardenstatelumber.com/wp-content/uploads/gsl-s4s-platinum-XL-logo_dark_2000px_transparency.png",
     matKey:"platinum_xl",
-    gradient:"linear-gradient(145deg, #000 0%, #000 40%, #0A1528 100%)",
+    gradient:"linear-gradient(145deg, #000 0%, #040A1A 30%, #0F2D5C 100%)",
     accentColor:"#2A4A8B",
+    accentColorBright:"#5B9FFF",
     desc:"The Platinum XL line is the flagship line in our family of interior/exterior S4S trimboards. Made from a clear finger-joint Radiata substrate and Coated with 1 pass of exterior Gesso Primer + 2 passes of vacuum coated exterior bright white, acrylic latex water based primer, the Platinum XL line is ideal for both interior and exterior applications.",
     skuPrefixes:["LTX","D1PRF","D2PRF","D3PRF","D4PRF","D5PRF"],
     sizes:[
@@ -232,8 +234,9 @@ const S4S_PRODUCT_LINES = [
     name:"Gesso Elite",
     logoSrc:"https://www.gardenstatelumber.com/wp-content/uploads/gsl-s4s-gesso-elite-logo_dark_2000px_transparency.png",
     matKey:"ge_s4s",
-    gradient:"linear-gradient(145deg, #000 0%, #000 40%, #0C1F0E 100%)",
+    gradient:"linear-gradient(145deg, #000 0%, #041408 30%, #0F3D1F 100%)",
     accentColor:"#2A6B3A",
+    accentColorBright:"#5FE07C",
     desc:"Introducing our newest line of exceptional Primed Radiata Pine S4S boards featuring 2 coats of exterior gesso coat primer + 1 coat of exterior acrylic latex primer! Stocking both 4/4\" and 5/4\" thicknesses across all widths in 8' and 16' lengths.",
     skuPrefixes:["GSL"],
     sizes:[
@@ -258,8 +261,9 @@ const S4S_PRODUCT_LINES = [
     name:"Pearl Coat 21",
     logoSrc:"https://www.gardenstatelumber.com/wp-content/uploads/gsl-s4s-pearl-coat-21-logo_dark_2000px_transparency.png",
     matKey:"s4s_21",
-    gradient:"linear-gradient(145deg, #000 0%, #000 40%, #28200A 100%)",
+    gradient:"linear-gradient(145deg, #000 0%, #140A04 30%, #5C2E0F 100%)",
     accentColor:"#8B7A2A",
+    accentColorBright:"#FFA54D",
     desc:"Introducing our newest line of 21/32\" Primed Radiata Pine S4S boards featuring 2 coats of exterior gesso coat primer + 1 coat of exterior acrylic latex primer!",
     skuPrefixes:["S4S"],
     sizes:[
@@ -302,12 +306,20 @@ function S4SProductLineSection({line, allItems, mult, pricingLabel, levelVis, sh
     }).filter(Boolean);
   }, [line, allItems]);
 
-  /* Collect all unique level numbers across all sizes in this line */
+  /* Collect all unique level numbers across all sizes in this line, filtered by visibility */
   const allLevelNums = useMemo(() => {
     const nums = new Set();
     resolvedSizes.forEach(s => s.levels.forEach(lv => nums.add(lv.level)));
-    return [...nums].sort((a,b) => a-b);
-  }, [resolvedSizes]);
+    const sorted = [...nums].sort((a,b) => a-b);
+    /* Apply price level visibility for s4s_trimboards */
+    return sorted.filter(n => {
+      if (!levelVis) return true;
+      const catVis = levelVis.categories?.s4s_trimboards;
+      if (catVis && catVis[n] !== undefined) return catVis[n];
+      if (levelVis.global?.[n] !== undefined) return levelVis.global[n];
+      return !DEFAULT_HIDDEN_LEVELS.includes(n);
+    });
+  }, [resolvedSizes, levelVis]);
 
   /* Level descriptions from first item that has each level */
   const levelDescs = useMemo(() => {
@@ -337,19 +349,20 @@ function S4SProductLineSection({line, allItems, mult, pricingLabel, levelVis, sh
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
             <thead><tr style={{borderBottom:"2px solid rgba(197,165,90,0.2)"}}>
-              <th style={{padding:"6px 10px",textAlign:"left",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:10,letterSpacing:0.5,minWidth:100}}>SKU</th>
-              <th style={{padding:"6px 10px",textAlign:"left",color:GOLD,fontWeight:800,fontSize:10,letterSpacing:1,minWidth:90}}>SIZE</th>
-              <th style={{padding:"6px 10px",textAlign:"left",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:10,letterSpacing:0.5,minWidth:110}}>ACTUAL</th>
-              <th style={{padding:"6px 8px",textAlign:"left",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:9,minWidth:80}}>LENGTHS</th>
-              <th style={{padding:"6px 8px",textAlign:"center",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:9,minWidth:70}}>
+              <th style={{padding:"6px 10px",textAlign:"left",color:"#fff",fontWeight:800,fontSize:10,letterSpacing:0.5,minWidth:100}}>SKU</th>
+              <th style={{padding:"6px 10px",textAlign:"left",color:"#fff",fontWeight:800,fontSize:10,letterSpacing:1,minWidth:90}}>SIZE</th>
+              <th style={{padding:"6px 10px",textAlign:"left",color:"#fff",fontWeight:800,fontSize:10,letterSpacing:0.5,minWidth:110}}>ACTUAL</th>
+              <th style={{padding:"6px 8px",textAlign:"left",color:"#fff",fontWeight:800,fontSize:9,minWidth:80}}>LENGTHS</th>
+              <th style={{padding:"6px 8px",textAlign:"center",color:"#fff",fontWeight:800,fontSize:9,minWidth:70}}>
                 <div>UNIT QTY</div>
-                {sharedUnitQty && <div style={{fontSize:10,fontWeight:800,color:GOLD,marginTop:2,fontFamily:"'IBM Plex Mono',monospace"}}>{sharedUnitQty}</div>}
+                {sharedUnitQty && <div style={{fontSize:10,fontWeight:800,color:line.accentColorBright||line.accentColor||GOLD,marginTop:2,fontFamily:"'IBM Plex Mono',monospace"}}>{sharedUnitQty}</div>}
               </th>
               {allLevelNums.map(n => {
+                const priceHeaderColor = line.accentColorBright || line.accentColor || GOLD;
                 return (
-                <th key={n} style={{padding:"6px 8px",textAlign:"center",fontWeight:800,fontSize:9,letterSpacing:0.5,minWidth:75,color:n===1?GOLD:"rgba(255,255,255,0.5)"}}>
+                <th key={n} style={{padding:"6px 8px",textAlign:"center",fontWeight:900,fontSize:9,letterSpacing:0.5,minWidth:75,color:priceHeaderColor,textShadow:`0 0 8px ${priceHeaderColor}40`}}>
                   <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{n===1?"BASE":levelDescs[n]?.replace(/ PRICE$/i,"").replace(/^\d+\+?\s*/,"") || ("L"+n)}</div>
-                  <div style={{fontSize:8,color:"rgba(255,255,255,0.25)",marginTop:1}}>{levelDescs[n]?.match(/^\d+\+?\s*/)?.[0]||""}</div>
+                  <div style={{fontSize:8,color:priceHeaderColor,opacity:0.55,marginTop:1}}>{levelDescs[n]?.match(/^\d+\+?\s*/)?.[0]||""}</div>
                 </th>
               )})}
             </tr></thead>
@@ -1469,8 +1482,8 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
       </div>
 
       {/* CSV Parsing Logic Reference — Price Level Visibility */}
-      <div style={{marginTop:24,background:"rgba(197,165,90,0.04)",borderRadius:10,padding:16,border:"1px solid rgba(197,165,90,0.1)"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",marginBottom:showLevelVis?16:0}} onClick={()=>setShowLevelVis(!showLevelVis)}>
+      <div style={{marginTop:40,background:"rgba(197,165,90,0.04)",borderRadius:10,padding:16,border:"1px solid rgba(197,165,90,0.1)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",marginBottom:showLevelVis?24:0}} onClick={()=>setShowLevelVis(!showLevelVis)}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={GOLD} strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             <span style={{fontSize:13,color:GOLD,fontWeight:700,letterSpacing:1}}>PRICE LEVEL VISIBILITY</span>
@@ -2023,7 +2036,7 @@ function App() {
                 <div style={{position:"absolute",left:"38%",top:"50%",transform:"translate(-50%,-50%)",textAlign:"center",zIndex:2}}>
                   <div style={{fontSize:28,fontWeight:900,color:"#fff",letterSpacing:4,textShadow:"0 2px 12px rgba(0,0,0,0.8)"}}>PRIMED PINE</div>
                   <div style={{fontSize:20,fontWeight:800,color:"#fff",letterSpacing:3,marginTop:2,textShadow:"0 2px 12px rgba(0,0,0,0.8)"}}>S4S TRIMBOARDS</div>
-                  <div style={{fontSize:12,fontWeight:700,color:GOLD,letterSpacing:3,marginTop:6,textShadow:"0 1px 6px rgba(0,0,0,0.6)"}}>GESSO ELITE · PLATINUM XL · PLATINUM PROTECTED · PEARL COAT 21</div>
+                  <div style={{fontSize:12,fontWeight:700,color:GOLD,letterSpacing:3,marginTop:6,textShadow:"0 1px 6px rgba(0,0,0,0.6)"}}>PLATINUM PROTECTED · PLATINUM XL · GESSO ELITE · PEARL COAT 21</div>
                 </div>
               </div>
               <S4STrimboardsSection allItems={allItems} mult={activeMult} pricingLabel={pricingLabel} levelVis={levelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn}/>
