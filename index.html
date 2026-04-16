@@ -214,11 +214,6 @@ const S4S_PRODUCT_LINES = [
     desc:"The Platinum XL line is the flagship line in our family of interior/exterior S4S trimboards. Made from a clear finger-joint Radiata substrate and Coated with 1 pass of exterior Gesso Primer + 2 passes of vacuum coated exterior bright white, acrylic latex water based primer, the Platinum XL line is ideal for both interior and exterior applications.",
     skuPrefixes:["LTX","D1PRF","D2PRF","D3PRF","D4PRF","D5PRF"],
     sizes:[
-      {nominal:"1/2 x 2",actual:"1/2 x 1-1/2",sku:"D1",matOverride:"primed_pine",fromMouldings:true},
-      {nominal:"1/2 x 3",actual:"1/2 x 2-1/2",sku:"D2",matOverride:"primed_pine",fromMouldings:true},
-      {nominal:"1/2 x 4",actual:"1/2 x 3-1/2",sku:"D3",matOverride:"primed_pine",fromMouldings:true},
-      {nominal:"1/2 x 6",actual:"1/2 x 5-1/2",sku:"D4",matOverride:"primed_pine",fromMouldings:true},
-      {nominal:"1/2 x 8",actual:"1/2 x 7-1/4",sku:"D5",matOverride:"primed_pine",fromMouldings:true},
       {nominal:"1 x 2",actual:"23/32 x 1-1/2",sku:"LTX12"},
       {nominal:"1 x 3",actual:"23/32 x 2-1/2",sku:"LTX13"},
       {nominal:"1 x 4",actual:"23/32 x 3-1/2",sku:"LTX14"},
@@ -241,7 +236,6 @@ const S4S_PRODUCT_LINES = [
     matKey:"xlp_30yr",
     gradient:"linear-gradient(145deg, #000 0%, #000 40%, #1A0A28 100%)",
     accentColor:"#6B2A8B",
-    warning:"Not for use in an exterior siding application with direct exposure to the elements. Any use in those applications will void any and all warranties.",
     desc:"Providing unparalleled protection against rot, fungus, mold, mildew, and even termites, PLATINUM PROTECTED stands apart from other trim products for its multi-phase protection process that covers all four sides of the substrate and ensures the ultimate in defense against the natural environment. Made from a clear finger-joint Radiata substrate and Coated with 1 pass of exterior Gesso Primer + 2 passes of vacuum coated exterior bright white, acrylic latex water based primer.",
     skuPrefixes:["XLP"],
     sizes:[
@@ -336,40 +330,42 @@ function S4SProductLineSection({line, allItems, mult, pricingLabel, levelVis, sh
 
   const renderGroup = (label, items) => {
     if (items.length === 0) return null;
+    /* Determine shared unit qty for this group (if all items have same mp/mu, show in header) */
+    const uniqueUnitQtys = [...new Set(items.filter(s=>s.mp>0).map(s=>s.mp+" "+s.mu))];
+    const sharedUnitQty = uniqueUnitQtys.length === 1 ? uniqueUnitQtys[0] : null;
     return (
       <div key={label} style={{marginBottom:12}}>
-        <div style={{fontSize:10,fontWeight:700,color:GOLD,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8,paddingLeft:4}}>{label}</div>
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
             <thead><tr style={{borderBottom:"2px solid rgba(197,165,90,0.2)"}}>
+              <th style={{padding:"6px 10px",textAlign:"left",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:10,letterSpacing:0.5,minWidth:100}}>SKU</th>
               <th style={{padding:"6px 10px",textAlign:"left",color:GOLD,fontWeight:800,fontSize:10,letterSpacing:1,minWidth:90}}>SIZE</th>
               <th style={{padding:"6px 10px",textAlign:"left",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:10,letterSpacing:0.5,minWidth:110}}>ACTUAL</th>
-              <th style={{padding:"6px 10px",textAlign:"left",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:10,letterSpacing:0.5,minWidth:100}}>SKU</th>
               {allLevelNums.map(n => {
-                const isSell = mult > 1;
-                const sellHeaderStyle = isSell ? {background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 10.5s ease-in-out infinite",color:"#000",borderRadius:3} : {};
                 return (
-                <th key={n} style={{padding:"6px 8px",textAlign:"center",fontWeight:800,fontSize:9,letterSpacing:0.5,minWidth:75,...sellHeaderStyle,...(!isSell && {color:n===1?GOLD:"rgba(255,255,255,0.5)"})}}>
+                <th key={n} style={{padding:"6px 8px",textAlign:"center",fontWeight:800,fontSize:9,letterSpacing:0.5,minWidth:75,color:n===1?GOLD:"rgba(255,255,255,0.5)"}}>
                   <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{n===1?"BASE":levelDescs[n]?.replace(/ PRICE$/i,"").replace(/^\d+\+?\s*/,"") || ("L"+n)}</div>
-                  <div style={{fontSize:8,color:isSell?"rgba(0,0,0,0.5)":"rgba(255,255,255,0.25)",marginTop:1}}>{levelDescs[n]?.match(/^\d+\+?\s*/)?.[0]||""}</div>
+                  <div style={{fontSize:8,color:"rgba(255,255,255,0.25)",marginTop:1}}>{levelDescs[n]?.match(/^\d+\+?\s*/)?.[0]||""}</div>
                 </th>
               )})}
-              <th style={{padding:"6px 8px",textAlign:"center",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:9,minWidth:60}}>UNIT QTY</th>
               <th style={{padding:"6px 8px",textAlign:"left",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:9,minWidth:80}}>LENGTHS</th>
+              <th style={{padding:"6px 8px",textAlign:"center",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:9,minWidth:70}}>
+                <div>UNIT QTY</div>
+                {sharedUnitQty && <div style={{fontSize:10,fontWeight:800,color:GOLD,marginTop:2,fontFamily:"'IBM Plex Mono',monospace"}}>{sharedUnitQty}</div>}
+              </th>
             </tr></thead>
             <tbody>{items.map((s, idx) => {
               const rowBg = idx % 2 === 0 ? "#0D0D0D" : "#111214";
               return (
                 <tr key={s.sku} style={{background:rowBg,borderBottom:"1px solid rgba(255,255,255,0.03)"}}>
+                  <td style={{padding:"8px 10px",fontFamily:"'IBM Plex Mono',monospace",fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.8)"}}>{s.fullSku}</td>
                   <td style={{padding:"8px 10px",fontWeight:800,color:"#fff",fontSize:14}}>{s.nominal}</td>
                   <td style={{padding:"8px 10px",fontFamily:"'IBM Plex Mono',monospace",fontSize:12,fontWeight:600,color:"rgba(255,255,255,0.6)"}}>{s.actual}</td>
-                  <td style={{padding:"8px 10px",fontFamily:"'IBM Plex Mono',monospace",fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.8)"}}>{s.fullSku}</td>
                   {allLevelNums.map(n => {
                     const lv = s.levels.find(l => l.level === n);
                     if (!lv) return <td key={n} style={{padding:"6px 8px",textAlign:"center"}}></td>;
                     const price = lv.price * mult;
                     const isLF = s.uom === "LF";
-                    /* When mult > 1 → Customer Sell — keep colors, bold; otherwise GSL Cost → gold/purple */
                     const color = isLF ? GOLD : "#b088ff";
                     const fw = mult > 1 ? 900 : 700;
                     return (
@@ -378,8 +374,8 @@ function S4SProductLineSection({line, allItems, mult, pricingLabel, levelVis, sh
                       </td>
                     );
                   })}
-                  <td style={{padding:"6px 8px",textAlign:"center",fontFamily:"'IBM Plex Mono',monospace",fontSize:12,fontWeight:600,color:"rgba(255,255,255,0.6)"}}>{s.mp > 0 ? "Unit Qty: " + s.mp + " " + s.mu : ""}</td>
                   <td style={{padding:"6px 8px",fontFamily:"'IBM Plex Mono',monospace",fontSize:12,fontWeight:600,color:"rgba(255,255,255,0.6)"}}>{s.lengths}</td>
+                  <td style={{padding:"6px 8px",textAlign:"center",fontFamily:"'IBM Plex Mono',monospace",fontSize:12,fontWeight:600,color:"rgba(255,255,255,0.6)"}}>{s.mp > 0 && !sharedUnitQty ? s.mp + " " + s.mu : ""}</td>
                 </tr>
               );
             })}</tbody>
@@ -393,9 +389,9 @@ function S4SProductLineSection({line, allItems, mult, pricingLabel, levelVis, sh
     <div style={{background:line.gradient||"linear-gradient(145deg,#000 0%,#0C1F0E 100%)",borderRadius:14,border:"1px solid rgba(197,165,90,0.2)",marginBottom:20,overflow:"hidden",boxShadow:line.accentColor?`0 0 30px ${line.accentColor}15`:"none"}}>
       {/* Header with logo + description */}
       <div onClick={()=>setExpanded(!expanded)} style={{cursor:"pointer",display:"flex",alignItems:"center",gap:16,padding:"16px 20px",borderBottom:expanded?"1px solid rgba(197,165,90,0.1)":"none",background:`linear-gradient(135deg,${line.accentColor||"rgba(197,165,90,0.06)"}10,rgba(0,0,0,0.3))`}}>
-        <img src={line.logoSrc} alt={line.name} style={{height:50,width:"auto",flexShrink:0,filter:"brightness(1.1)"}} onError={e=>{e.target.style.display='none'}}/>
+        <img src={line.logoSrc} alt={line.name} style={{height:75,width:"auto",flexShrink:0,filter:"brightness(1.1)"}} onError={e=>{e.target.style.display='none'}}/>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",lineHeight:1.5,maxHeight:expanded?200:36,overflow:"hidden",transition:"max-height 0.3s ease"}}>{line.desc}</div>
+          <div style={{fontSize:14,fontWeight:600,color:"rgba(255,255,255,0.85)",lineHeight:1.5,maxHeight:expanded?240:48,overflow:"hidden",transition:"max-height 0.3s ease"}}>{line.desc}</div>
           {line.warning && expanded && (
             <div style={{marginTop:8,padding:"8px 12px",background:"rgba(255,60,60,0.08)",border:"1px solid rgba(255,60,60,0.25)",borderRadius:6,fontSize:10,fontWeight:700,color:"#ff6b6b",lineHeight:1.5,letterSpacing:0.3}}>
               ⚠ {line.warning}
@@ -1943,7 +1939,7 @@ function App() {
         {page==="portal" && (
           <div style={{background:"rgba(0,0,0,0.5)",borderTop:"1px solid rgba(255,255,255,0.04)",boxShadow:"0 6px 20px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4)"}}>
             <div style={{maxWidth:1500,margin:"0 auto",padding:"0 24px",display:"flex",gap:3,overflowX:"auto",paddingTop:12,paddingBottom:12}}>
-              {SECTIONS.filter(s=>(CAT[s.key]||[]).length>0 && !["plinth_rosettes","blanks","specialty"].includes(s.key)).map(s=>{const isActive=sec===s.key;return(<button key={s.key} onClick={()=>{setSec(s.key);if(s.key!=="s4s_trimboards")setS4sFilter(null);}} style={{padding:s.key==="s4s_trimboards"?"5px 19px":"10px 19px",borderRadius:5,border:"none",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:0.5,fontFamily:"'Archivo',sans-serif",whiteSpace:"nowrap",background:isActive?"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)":"transparent",backgroundSize:isActive?"200% 100%":"auto",animation:isActive?"tabShine 7s ease-in-out infinite":"none",color:isActive?G:"rgba(255,255,255,0.35)",lineHeight:1.3,textAlign:"center",transition:"all 0.2s"}}>{s.key==="s4s_trimboards"?<><span>S4S Trimboards</span><br/><span style={{fontSize:10,fontWeight:600,opacity:0.7}}>(Primed Pine)</span></>:s.label}</button>);})}
+              {SECTIONS.filter(s=>(CAT[s.key]||[]).length>0 && !["plinth_rosettes","blanks","specialty"].includes(s.key)).map(s=>{const isActive=sec===s.key;return(<button key={s.key} onClick={()=>{setSec(s.key);if(s.key!=="s4s_trimboards")setS4sFilter(null);}} style={{padding:s.key==="s4s_trimboards"?"5px 19px":"10px 19px",borderRadius:5,border:"none",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:0.5,fontFamily:"'Archivo',sans-serif",whiteSpace:"nowrap",background:isActive?"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)":"transparent",backgroundSize:isActive?"200% 100%":"auto",animation:isActive?"tabShine 7s ease-in-out infinite":"none",color:isActive?G:"rgba(255,255,255,0.35)",lineHeight:1.3,textAlign:"center",transition:"all 0.2s"}}>{s.key==="s4s_trimboards"?<><span>S4S Trimboards</span><br/><span style={{fontSize:12,fontWeight:800,opacity:1}}>(Primed Pine)</span></>:s.label}</button>);})}
             </div>
           </div>
         )}
@@ -1972,7 +1968,7 @@ function App() {
           {/* UNIFIED SEARCH BAR — Lookup (Mouldings only) + Grid Filter (all except Hardwood S4S) */}
           {sec !== "hardwood_s4s" && (
             <div style={Object.assign({},controlsWidth?{maxWidth:controlsWidth}:{})}>
-              <Lookup mult={activeMult} allItems={allItems} pricingLabel={pricingLabel} levelVis={levelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn} showLookup={sec==="mouldings"} srch={srch} setSrch={setSrch} showFilter={true} selling={selling}/>
+              <Lookup mult={activeMult} allItems={allItems} pricingLabel={pricingLabel} levelVis={levelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn} showLookup={sec==="mouldings"} srch={srch} setSrch={setSrch} showFilter={sec!=="s4s_trimboards"} selling={selling}/>
             </div>
           )}
 
