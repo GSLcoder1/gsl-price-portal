@@ -813,42 +813,32 @@ function Lookup({mult, allItems, pricingLabel, levelVis, showAllPriceLevelsBtn, 
   const hasMultipleSubstrateLevels = allPricesData && allPricesData.mats.some(m => m.levels.length > 1);
 
   return (
-    <div style={{background:"linear-gradient(to right,#000 0%,#000 40%,#060D07 55%,#0C1F0E 80%,#0C1F0E 100%)",borderRadius:14,border:"1px solid rgba(197,165,90,0.3)",boxShadow:"0 0 12px rgba(197,165,90,0.15), 0 0 4px rgba(197,165,90,0.1)",marginBottom:24,overflow:"hidden"}}>
-      {/* ── SKU LOOKUP BAR ── */}
+    <div>
+      {/* ── SKU LOOKUP PANEL — own distinct card ── */}
       {showLookup && (
-        <div style={{background:"linear-gradient(to right, #000 0%, #000 40%, #060D07 60%, #0C1F0E 100%)",padding:"10px 16px",borderRadius:12,border:"1px solid rgba(197,165,90,0.3)",boxShadow:"0 0 12px rgba(197,165,90,0.15), 0 0 4px rgba(197,165,90,0.1)",margin:"0 0 8px 0"}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,flex:"0 0 auto"}}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={GOLD} strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <span style={{fontSize:10,fontWeight:800,color:GOLD,letterSpacing:1.5,textTransform:"uppercase",whiteSpace:"nowrap"}}>SKU Lookup</span>
+        <div style={{background:"linear-gradient(145deg,#000 0%,#0C1F0E 100%)",borderRadius:14,border:"1px solid rgba(197,165,90,0.3)",boxShadow:"0 0 12px rgba(197,165,90,0.15), 0 0 4px rgba(197,165,90,0.1)",marginBottom:16,overflow:"hidden"}}>
+          <div style={{background:"linear-gradient(135deg,rgba(197,165,90,0.1),rgba(197,165,90,0.03))",padding:"16px 20px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid rgba(197,165,90,0.08)"}}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={GOLD} strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <span style={{fontSize:14,fontWeight:800,color:GOLD,letterSpacing:1.5,textTransform:"uppercase"}}>SKU Lookup</span>
+            <span style={{fontSize:12,color:"rgba(255,255,255,0.6)",fontWeight:500,marginLeft:8}}>Search any <strong style={{color:GOLD}}>ROOT</strong> SKU to see all substrates, lengths & pricing</span>
+          </div>
+          <div style={{padding:"16px 20px"}}>
+            <div style={{display:"flex",gap:10,marginBottom:hasResult?16:0}}>
+              <input value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")search();if(e.key==="Escape")clearResult()}} placeholder="e.g. BB514, UC41, 8065, WM130..." style={{flex:1,padding:"12px 16px",borderRadius:8,border:"2px solid #A8883A",background:"linear-gradient(135deg,#F5F0E1,#E8DFC8)",color:"#1B4332",fontSize:15,fontWeight:600,fontFamily:"'IBM Plex Mono',monospace",outline:"none"}}/>
+              <button onClick={()=>search()} style={{padding:"12px 24px",borderRadius:8,border:"none",background:GOLD,color:G,fontWeight:800,fontSize:12,cursor:"pointer",letterSpacing:1.5,textTransform:"uppercase",fontFamily:"'Archivo',sans-serif"}}>Lookup</button>
+              {hasResult && <button onClick={clearResult} style={{padding:"12px 16px",borderRadius:8,border:"1px solid rgba(255,100,100,0.3)",background:"rgba(255,100,100,0.08)",color:"#ff6b6b",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"'Archivo',sans-serif",whiteSpace:"nowrap"}}>✕ Clear</button>}
             </div>
-            <input value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")search();if(e.key==="Escape")clearResult()}} placeholder="e.g. UC41, MCC312…" style={{flex:1,padding:"8px 12px",borderRadius:6,border:"2px solid #A8883A",background:"linear-gradient(135deg,#F5F0E1,#E8DFC8)",color:"#1B4332",fontSize:13,fontWeight:600,fontFamily:"'IBM Plex Mono',monospace",outline:"none",minWidth:0,height:38}}/>
-            <button onClick={()=>search()} style={{padding:"8px 16px",borderRadius:6,border:"none",background:"linear-gradient(135deg,"+GOLD+",#A8883A)",color:G,fontWeight:800,fontSize:10,cursor:"pointer",letterSpacing:1,textTransform:"uppercase",fontFamily:"'Archivo',sans-serif",whiteSpace:"nowrap",height:38}}>Lookup</button>
-            {hasResult && <button onClick={clearResult} style={{padding:"8px 12px",borderRadius:6,border:"1px solid rgba(255,100,100,0.3)",background:"rgba(255,100,100,0.08)",color:"#ff6b6b",fontWeight:700,fontSize:10,cursor:"pointer",fontFamily:"'Archivo',sans-serif",whiteSpace:"nowrap",height:38}}>✕ Clear</button>}
-          </div>
-        </div>
-      )}
-      {/* ── FILTER BAR ── */}
-      {showFilter && (
-        <div style={{background:"linear-gradient(to right, #000 0%, #000 40%, #060D07 60%, #0C1F0E 100%)",padding:"10px 16px",borderRadius:12,border:"1px solid rgba(197,165,90,0.3)",boxShadow:"0 0 12px rgba(197,165,90,0.15), 0 0 4px rgba(197,165,90,0.1)",margin:"0 0 8px 0"}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,minWidth:220}}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="2"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
-            <input value={srch} onChange={e=>setSrch(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")e.target.blur()}} placeholder="Filter product grid below by typing SKU or description" style={{flex:1,padding:"8px 12px",borderRadius:6,border:"1px solid rgba(197,165,90,0.35)",background:"linear-gradient(to right, #000 0%, #060D07 25%, #0C1F0E 60%)",color:"#fff",fontSize:12,fontFamily:"'IBM Plex Mono',monospace",outline:"none",minWidth:0,height:38,"--placeholder-color":"rgba(197,165,90,0.45)"}} className="filter-input"/>
-            {srch && <button onClick={()=>setSrch("")} style={{border:"none",background:"none",color:GOLD,cursor:"pointer",fontSize:14,fontWeight:700,height:38,display:"flex",alignItems:"center"}}>×</button>}
-          </div>
-        </div>
-      )}
-      {/* Recent lookups — below bar, only when lookup active */}
-      {showLookup && recents.length > 0 && (
-        <div style={{padding:"6px 16px",display:"flex",alignItems:"center",gap:6,borderBottom:hasResult?"1px solid rgba(197,165,90,0.06)":"none",background:"rgba(0,0,0,0.3)"}}>
-          <span style={{fontSize:9,color:"rgba(255,255,255,0.25)",fontWeight:600,letterSpacing:1,whiteSpace:"nowrap",flexShrink:0}}>RECENT</span>
-          <div style={{display:"flex",gap:4,overflow:"hidden"}}>
-            {recents.map(sku => (
-              <button key={sku} onClick={()=>{setQ(sku);search(sku)}} style={{padding:"4px 10px",borderRadius:5,border:"1px solid rgba(197,165,90,0.15)",background:res?.sku===sku?"rgba(197,165,90,0.12)":"rgba(255,255,255,0.03)",color:res?.sku===sku?GOLD:"rgba(255,255,255,0.4)",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'IBM Plex Mono',monospace",whiteSpace:"nowrap",letterSpacing:0.3}}>{sku}</button>
-            ))}
-          </div>
-        </div>
-      )}
+            {/* Recent lookups — inside the lookup card */}
+            {recents.length > 0 && !hasResult && (
+              <div style={{display:"flex",alignItems:"center",gap:6,marginTop:10}}>
+                <span style={{fontSize:9,color:"rgba(255,255,255,0.25)",fontWeight:600,letterSpacing:1,whiteSpace:"nowrap",flexShrink:0}}>RECENT</span>
+                <div style={{display:"flex",gap:4,overflow:"hidden"}}>
+                  {recents.map(sku => (
+                    <button key={sku} onClick={()=>{setQ(sku);search(sku)}} style={{padding:"4px 10px",borderRadius:5,border:"1px solid rgba(197,165,90,0.15)",background:res?.sku===sku?"rgba(197,165,90,0.12)":"rgba(255,255,255,0.03)",color:res?.sku===sku?GOLD:"rgba(255,255,255,0.4)",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'IBM Plex Mono',monospace",whiteSpace:"nowrap",letterSpacing:0.3}}>{sku}</button>
+                  ))}
+                </div>
+              </div>
+            )}
 
       {hasResult && (
         <div style={{padding:"16px 20px",animation:"fadeIn 0.25s ease"}}>
@@ -871,7 +861,7 @@ function Lookup({mult, allItems, pricingLabel, levelVis, showAllPriceLevelsBtn, 
                 <thead><tr style={{borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
                   <th style={{padding:"8px 12px",textAlign:"center",color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:700,letterSpacing:1}}>SUBSTRATE</th>
                   <th style={{padding:"8px 12px",textAlign:"center",color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:700,letterSpacing:1}}>FULL SKU</th>
-                  <th style={{padding:"8px 12px",textAlign:"center",fontSize:10,fontWeight:800,letterSpacing:1,...(mult > 1 ? {background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 7s ease-in-out infinite",color:"#000",borderRadius:3} : {color:"rgba(255,255,255,0.6)"})}}><div style={{textAlign:"center"}}>{mult > 1 ? <><div>CUSTOMER</div><div>SELL</div></> : "GSL COST"}</div>{mult > 1 && <div style={{fontSize:9,fontWeight:700,color:mult > 1 ? "rgba(0,0,0,0.6)" : GOLD,marginTop:2}}>{pricingLabel}</div>}</th>
+                  <th style={{padding:"8px 12px",textAlign:"center",fontSize:10,fontWeight:800,letterSpacing:1,...(mult > 1 ? {background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 7s ease-in-out infinite",color:"#000",borderRadius:3} : {color:"rgba(255,255,255,0.6)"})}}><div style={{textAlign:"center"}}>{mult > 1 ? "CUSTOMER SELL" : "GSL COST"}</div>{mult > 1 && <div style={{fontSize:11,fontWeight:900,color:mult > 1 ? "rgba(0,0,0,0.7)" : GOLD,marginTop:2}}>{pricingLabel}</div>}</th>
                   <th style={{padding:"8px 12px",textAlign:"center",color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:700,letterSpacing:1}}>LENGTHS</th>
                   <th style={{padding:"8px 12px",textAlign:"center",color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:700,letterSpacing:1}}>UNIT QTY</th>
                 </tr></thead>
@@ -940,7 +930,7 @@ function Lookup({mult, allItems, pricingLabel, levelVis, showAllPriceLevelsBtn, 
                       <th style={{padding:"5px 10px",fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.35)",letterSpacing:0.8,textAlign:"left",borderBottom:"1px solid rgba(197,165,90,0.15)",position:"sticky",left:0,background:"#0A0A0A",zIndex:2}}></th>
                       {allPricesData.mats.map(m => (
                         mult > 1 ? (
-                          <th key={m.col+"_s"} colSpan={2} style={{padding:"5px 8px",fontSize:11,fontWeight:900,color:"#000",letterSpacing:0.8,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.15)",borderLeft:"1px solid rgba(255,255,255,0.06)",minWidth:80,background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 7s ease-in-out infinite",borderRadius:3}}><div style={{textAlign:"center"}}><div>CUSTOMER</div><div>SELL</div></div>{!selling && <div style={{fontSize:9,fontWeight:700,color:"rgba(0,0,0,0.6)",marginTop:1}}>({mult.toFixed(2)}{"\u00D7"})</div>}
+                          <th key={m.col+"_s"} colSpan={2} style={{padding:"5px 8px",fontSize:11,fontWeight:900,color:"#000",letterSpacing:0.8,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.15)",borderLeft:"1px solid rgba(255,255,255,0.06)",minWidth:80,background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 7s ease-in-out infinite",borderRadius:3}}><div style={{textAlign:"center"}}>CUSTOMER SELL</div>{!selling && <div style={{fontSize:11,fontWeight:900,color:"rgba(0,0,0,0.7)",marginTop:1}}>({mult.toFixed(2)}{"\u00D7"})</div>}
                           </th>
                         ) : (
                           <th key={m.col+"_c"} colSpan={2} style={{padding:"5px 8px",fontSize:11,fontWeight:800,color:GOLD,letterSpacing:0.8,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.15)",borderLeft:"1px solid rgba(255,255,255,0.06)",minWidth:80}}>COST</th>
@@ -989,6 +979,26 @@ function Lookup({mult, allItems, pricingLabel, levelVis, showAllPriceLevelsBtn, 
         </div>
       )}
       {res === "NONE" && <div style={{padding:"14px 20px",textAlign:"center",color:"#ff6b6b",fontSize:12}}>No match for "{q}" — try root SKU without material or length suffix. <button onClick={clearResult} style={{marginLeft:8,padding:"3px 10px",borderRadius:4,border:"1px solid rgba(255,100,100,0.3)",background:"rgba(255,100,100,0.08)",color:"#ff6b6b",fontSize:10,fontWeight:700,cursor:"pointer"}}>Clear</button></div>}
+          </div>
+        </div>
+      )}
+
+      {/* ── FILTER BAR + COLOR KEY — separate row below lookup ── */}
+      {showFilter && (
+        <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+          <div style={{flex:"1 1 300px",background:"linear-gradient(145deg,#000 0%,#0C1F0E 100%)",borderRadius:8,padding:"10px 14px",border:"1px solid rgba(197,165,90,0.3)",boxShadow:"0 0 12px rgba(197,165,90,0.15), 0 0 4px rgba(197,165,90,0.1)",display:"flex",alignItems:"center",gap:10}}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={GOLD} strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input value={srch} onChange={e=>setSrch(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")e.target.blur()}} placeholder="Filter by SKU or description..." style={{flex:1,border:"none",background:"transparent",color:"#fff",fontSize:13,fontFamily:"'IBM Plex Mono',monospace",outline:"none"}}/>
+            {srch && <button onClick={()=>setSrch("")} style={{border:"none",background:"none",color:GOLD,cursor:"pointer",fontSize:14,fontWeight:700}}>×</button>}
+          </div>
+          <div style={{display:"flex",gap:12,alignItems:"center",background:"linear-gradient(135deg,rgba(0,0,0,0.3),rgba(12,31,14,0.2))",borderRadius:8,padding:"10px 16px",border:"1px solid rgba(255,255,255,0.06)"}}>
+            <div style={{display:"flex",gap:12}}>
+              <span style={{fontSize:12,fontWeight:700,color:GOLD}}>● /LF</span>
+              <span style={{fontSize:12,fontWeight:700,color:"#b088ff"}}>● /PC</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2080,7 +2090,7 @@ function App() {
                                         <th style={{padding:"4px 8px",borderBottom:"1px solid rgba(197,165,90,0.12)",position:"sticky",left:0,background:"rgba(0,0,0,0.6)",zIndex:2}}></th>
                                         {activeMats.map(m => (
                                           activeMult > 1 ? (
-                                            <th key={m.col+"_s"} colSpan={2} style={{padding:"4px 6px",fontSize:10,fontWeight:900,color:"#000",letterSpacing:0.5,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.12)",borderLeft:"1px solid rgba(255,255,255,0.05)",minWidth:70,background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 7s ease-in-out infinite",borderRadius:3}}><div style={{textAlign:"center"}}><div>CUSTOMER</div><div>SELL</div></div>{!selling && <div style={{fontSize:8,fontWeight:700,color:"rgba(0,0,0,0.6)",marginTop:1}}>({activeMult.toFixed(2)}{"\u00D7"})</div>}
+                                            <th key={m.col+"_s"} colSpan={2} style={{padding:"4px 6px",fontSize:10,fontWeight:900,color:"#000",letterSpacing:0.5,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.12)",borderLeft:"1px solid rgba(255,255,255,0.05)",minWidth:70,background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 7s ease-in-out infinite",borderRadius:3}}><div style={{textAlign:"center"}}>CUSTOMER SELL</div>{!selling && <div style={{fontSize:10,fontWeight:900,color:"rgba(0,0,0,0.7)",marginTop:1}}>({activeMult.toFixed(2)}{"\u00D7"})</div>}
                                             </th>
                                           ) : (
                                             <th key={m.col+"_c"} colSpan={2} style={{padding:"4px 6px",fontSize:10,fontWeight:800,color:GOLD,letterSpacing:0.5,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.12)",borderLeft:"1px solid rgba(255,255,255,0.05)",minWidth:70}}>GSL COST</th>
@@ -2141,12 +2151,6 @@ function App() {
             </div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 16px",borderTop:"1px solid rgba(255,255,255,0.04)",background:"rgba(0,0,0,0.3)"}}>
               <span style={{fontSize:11,color:"rgba(255,255,255,0.5)",fontWeight:600,fontFamily:"'IBM Plex Mono',monospace"}}>{filtered.length>0?("Showing "+visible.length+" of "+filtered.length):"No results"}{hasMore?" — scroll for more":""}</span>
-              <div style={{display:"flex",alignItems:"center",gap:16}}>
-                <div style={{display:"flex",gap:14,alignItems:"center",visibility:sec==="hardwood_s4s"?"hidden":"visible"}}>
-                  <span style={{fontSize:13,fontWeight:800,color:GOLD}}>● /LF</span>
-                  <span style={{fontSize:13,fontWeight:800,color:"#b088ff"}}>● /PC</span>
-                </div>
-              </div>
             </div>
           </div>
 
