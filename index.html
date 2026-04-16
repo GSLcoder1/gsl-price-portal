@@ -814,11 +814,10 @@ function Lookup({mult, allItems, pricingLabel, levelVis, showAllPriceLevelsBtn, 
 
   return (
     <div style={{background:"linear-gradient(to right,#000 0%,#000 40%,#060D07 55%,#0C1F0E 80%,#0C1F0E 100%)",borderRadius:14,border:"1px solid rgba(197,165,90,0.3)",boxShadow:"0 0 12px rgba(197,165,90,0.15), 0 0 4px rgba(197,165,90,0.1)",marginBottom:24,overflow:"hidden"}}>
-      {/* ── UNIFIED SEARCH BAR ── */}
-      <div style={{background:"linear-gradient(to right,rgba(197,165,90,0.04) 0%,rgba(197,165,90,0.04) 30%,rgba(197,165,90,0.03) 50%,rgba(197,165,90,0.02) 75%,rgba(197,165,90,0.01) 100%)",padding:"10px 16px",display:"flex",alignItems:"center",gap:10,borderBottom:hasResult?"1px solid rgba(197,165,90,0.08)":"none",flexWrap:"wrap"}}>
-        {/* LEFT: SKU Lookup (only on Mouldings) */}
-        {showLookup && (
-          <div style={{display:"flex",alignItems:"center",gap:8,flex:"1 1 auto",minWidth:0}}>
+      {/* ── SKU LOOKUP BAR ── */}
+      {showLookup && (
+        <div style={{background:"linear-gradient(to right, #000 0%, #000 40%, #060D07 60%, #0C1F0E 100%)",padding:"10px 16px",borderRadius:12,border:"1px solid rgba(197,165,90,0.3)",boxShadow:"0 0 12px rgba(197,165,90,0.15), 0 0 4px rgba(197,165,90,0.1)",margin:"0 0 8px 0"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
             <div style={{display:"flex",alignItems:"center",gap:6,flex:"0 0 auto"}}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={GOLD} strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <span style={{fontSize:10,fontWeight:800,color:GOLD,letterSpacing:1.5,textTransform:"uppercase",whiteSpace:"nowrap"}}>SKU Lookup</span>
@@ -827,20 +826,18 @@ function Lookup({mult, allItems, pricingLabel, levelVis, showAllPriceLevelsBtn, 
             <button onClick={()=>search()} style={{padding:"8px 16px",borderRadius:6,border:"none",background:"linear-gradient(135deg,"+GOLD+",#A8883A)",color:G,fontWeight:800,fontSize:10,cursor:"pointer",letterSpacing:1,textTransform:"uppercase",fontFamily:"'Archivo',sans-serif",whiteSpace:"nowrap",height:38}}>Lookup</button>
             {hasResult && <button onClick={clearResult} style={{padding:"8px 12px",borderRadius:6,border:"1px solid rgba(255,100,100,0.3)",background:"rgba(255,100,100,0.08)",color:"#ff6b6b",fontWeight:700,fontSize:10,cursor:"pointer",fontFamily:"'Archivo',sans-serif",whiteSpace:"nowrap",height:38}}>✕ Clear</button>}
           </div>
-        )}
-        {/* Divider between lookup and filter (only when both visible) */}
-        {showLookup && showFilter && (
-          <div style={{width:1,height:28,background:"rgba(197,165,90,0.2)",flexShrink:0}}/>
-        )}
-        {/* RIGHT: Grid filter */}
-        {showFilter && (
-          <div style={{display:"flex",alignItems:"center",gap:8,flex:showLookup?"1 1 100%":"1 1 auto",minWidth:220}}>
+        </div>
+      )}
+      {/* ── FILTER BAR ── */}
+      {showFilter && (
+        <div style={{background:"linear-gradient(to right, #000 0%, #000 40%, #060D07 60%, #0C1F0E 100%)",padding:"10px 16px",borderRadius:12,border:"1px solid rgba(197,165,90,0.3)",boxShadow:"0 0 12px rgba(197,165,90,0.15), 0 0 4px rgba(197,165,90,0.1)",margin:"0 0 8px 0"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,minWidth:220}}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="2"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
-            <input value={srch} onChange={e=>setSrch(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")e.target.blur()}} placeholder="Filter product grid below by typing SKU or description" style={{flex:1,padding:"8px 12px",borderRadius:6,border:"1px solid rgba(197,165,90,0.35)",background:"linear-gradient(to right, #0C1F0E 0%, #060D07 25%, #000 60%)",color:"#fff",fontSize:12,fontFamily:"'IBM Plex Mono',monospace",outline:"none",minWidth:0,height:38,"--placeholder-color":"rgba(197,165,90,0.45)"}} className="filter-input"/>
+            <input value={srch} onChange={e=>setSrch(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")e.target.blur()}} placeholder="Filter product grid below by typing SKU or description" style={{flex:1,padding:"8px 12px",borderRadius:6,border:"1px solid rgba(197,165,90,0.35)",background:"linear-gradient(to right, #000 0%, #060D07 25%, #0C1F0E 60%)",color:"#fff",fontSize:12,fontFamily:"'IBM Plex Mono',monospace",outline:"none",minWidth:0,height:38,"--placeholder-color":"rgba(197,165,90,0.45)"}} className="filter-input"/>
             {srch && <button onClick={()=>setSrch("")} style={{border:"none",background:"none",color:GOLD,cursor:"pointer",fontSize:14,fontWeight:700,height:38,display:"flex",alignItems:"center"}}>×</button>}
           </div>
-        )}
-      </div>
+        </div>
+      )}
       {/* Recent lookups — below bar, only when lookup active */}
       {showLookup && recents.length > 0 && (
         <div style={{padding:"6px 16px",display:"flex",alignItems:"center",gap:6,borderBottom:hasResult?"1px solid rgba(197,165,90,0.06)":"none",background:"rgba(0,0,0,0.3)"}}>
@@ -944,9 +941,6 @@ function Lookup({mult, allItems, pricingLabel, levelVis, showAllPriceLevelsBtn, 
                       {allPricesData.mats.map(m => (
                         mult > 1 ? (
                           <th key={m.col+"_s"} colSpan={2} style={{padding:"5px 8px",fontSize:11,fontWeight:900,color:"#000",letterSpacing:0.8,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.15)",borderLeft:"1px solid rgba(255,255,255,0.06)",minWidth:80,background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 7s ease-in-out infinite",borderRadius:3}}><div style={{textAlign:"center"}}><div>CUSTOMER</div><div>SELL</div></div>{!selling && <div style={{fontSize:9,fontWeight:700,color:"rgba(0,0,0,0.6)",marginTop:1}}>({mult.toFixed(2)}{"\u00D7"})</div>}
-                          </th>
-                        ) : (
-                          <th key={m.col+"_c"} colSpan={2} style={{padding:"5px 8px",fontSize:11,fontWeight:800,color:GOLD,letterSpacing:0.8,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.15)",borderLeft:"1px solid rgba(255,255,255,0.06)",minWidth:80}}>COST</th>
                           </th>
                         ) : (
                           <th key={m.col+"_c"} colSpan={2} style={{padding:"5px 8px",fontSize:11,fontWeight:800,color:GOLD,letterSpacing:0.8,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.15)",borderLeft:"1px solid rgba(255,255,255,0.06)",minWidth:80}}>COST</th>
@@ -2087,9 +2081,6 @@ function App() {
                                         {activeMats.map(m => (
                                           activeMult > 1 ? (
                                             <th key={m.col+"_s"} colSpan={2} style={{padding:"4px 6px",fontSize:10,fontWeight:900,color:"#000",letterSpacing:0.5,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.12)",borderLeft:"1px solid rgba(255,255,255,0.05)",minWidth:70,background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 7s ease-in-out infinite",borderRadius:3}}><div style={{textAlign:"center"}}><div>CUSTOMER</div><div>SELL</div></div>{!selling && <div style={{fontSize:8,fontWeight:700,color:"rgba(0,0,0,0.6)",marginTop:1}}>({activeMult.toFixed(2)}{"\u00D7"})</div>}
-                                            </th>
-                                          ) : (
-                                            <th key={m.col+"_c"} colSpan={2} style={{padding:"4px 6px",fontSize:10,fontWeight:800,color:GOLD,letterSpacing:0.5,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.12)",borderLeft:"1px solid rgba(255,255,255,0.05)",minWidth:70}}>GSL COST</th>
                                             </th>
                                           ) : (
                                             <th key={m.col+"_c"} colSpan={2} style={{padding:"4px 6px",fontSize:10,fontWeight:800,color:GOLD,letterSpacing:0.5,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.12)",borderLeft:"1px solid rgba(255,255,255,0.05)",minWidth:70}}>GSL COST</th>
