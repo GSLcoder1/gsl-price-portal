@@ -582,11 +582,12 @@ function AdminPanel({user, tiers, setTiers, team, setTeam, onVisibilityChange}) 
   const [editId, setEditId] = useState(null);
   const [editName, setEditName] = useState("");
   const [editMarkup, setEditMarkup] = useState(1.0);
+  const [editMarkupText, setEditMarkupText] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newRole, setNewRole] = useState("member");
   const addTier = async () => { if (!newTier.name.trim()) return; const result = await saveTier(newTier.name.trim(), newTier.markup, tiers.length + 1); if (result) { setTiers([...tiers, {id: result.id, name: result.name, markup: Number(result.markup), sort_order: result.sort_order}]); } else { setTiers([...tiers, {id: Date.now(), name: newTier.name.trim(), markup: newTier.markup}]); } setNewTier({name:"",markup:1.30}); };
   const removeTier = async (id) => { await deleteTier(id); setTiers(tiers.filter(t=>t.id!==id)); if(editId===id) setEditId(null); };
-  const startEdit = (t) => { setEditId(t.id); setEditName(t.name); setEditMarkup(t.markup); };
+  const startEdit = (t) => { setEditId(t.id); setEditName(t.name); setEditMarkup(t.markup); setEditMarkupText(t.markup.toFixed(2)); };
   const saveEdit = async () => { if(!editName.trim()) return; await updateTier(editId, {name: editName.trim(), markup: editMarkup}); setTiers(tiers.map(t=>t.id===editId?{...t,name:editName.trim(),markup:editMarkup}:t)); setEditId(null); };
   const cancelEdit = () => setEditId(null);
   const addMember = () => { if (!newEmail.trim()) return; setTeam([...team, {id: Date.now(), email: newEmail.trim(), role: newRole, added: new Date().toLocaleDateString()}]); setNewEmail(""); };
@@ -613,10 +614,10 @@ function AdminPanel({user, tiers, setTiers, team, setTeam, onVisibilityChange}) 
                 <input value={editName} onChange={e=>setEditName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveEdit()}}
                   style={{width:"100%",padding:"8px 12px",borderRadius:6,border:"1px solid rgba(197,165,90,0.3)",background:"rgba(0,0,0,0.4)",color:"#fff",fontSize:14,fontWeight:600,outline:"none"}}/>
               </div>
-              <div style={{flex:"0 0 100px"}}>
+              <div style={{flex:"0 0 140px"}}>
                 <label style={{fontSize:9,color:GOLD,fontWeight:600,display:"block",marginBottom:3}}>MARKUP</label>
-                <input type="number" step="0.05" min="1" max="5" value={editMarkup} onChange={e=>setEditMarkup(parseFloat(e.target.value)||1)} onKeyDown={e=>{if(e.key==="Enter")saveEdit()}}
-                  style={{width:"100%",padding:"8px 12px",borderRadius:6,border:"1px solid rgba(197,165,90,0.3)",background:"rgba(0,0,0,0.4)",color:GOLD,fontSize:14,fontFamily:"'IBM Plex Mono',monospace",outline:"none",textAlign:"center",fontWeight:700}}/>
+                <div style={{display:"flex",alignItems:"center",gap:0}}><button onClick={()=>{const v=Math.max(1,Math.round((editMarkup-0.05)*100)/100);setEditMarkup(v);setEditMarkupText(v.toFixed(2));}} style={{padding:"8px 6px",borderRadius:"6px 0 0 6px",border:"1px solid rgba(197,165,90,0.3)",borderRight:"none",background:"rgba(255,255,255,0.05)",color:GOLD,fontSize:14,fontWeight:700,cursor:"pointer",lineHeight:1}}>−</button><input type="text" inputMode="decimal" value={editMarkupText} onFocus={e=>e.target.select()} onChange={e=>setEditMarkupText(e.target.value)} onBlur={e=>{const v=parseFloat(e.target.value)||1;const clamped=Math.max(1,Math.min(5,v));setEditMarkup(clamped);setEditMarkupText(clamped.toFixed(2));}} onKeyDown={e=>{if(e.key==="Enter"){e.target.blur();saveEdit()}}}
+                  style={{width:60,padding:"8px 4px",border:"1px solid rgba(197,165,90,0.3)",background:"rgba(0,0,0,0.4)",color:GOLD,fontSize:14,fontFamily:"'IBM Plex Mono',monospace",outline:"none",textAlign:"center",fontWeight:700}}/><button onClick={()=>{const v=Math.min(5,Math.round((editMarkup+0.05)*100)/100);setEditMarkup(v);setEditMarkupText(v.toFixed(2));}} style={{padding:"8px 6px",borderRadius:"0 6px 6px 0",border:"1px solid rgba(197,165,90,0.3)",borderLeft:"none",background:"rgba(255,255,255,0.05)",color:GOLD,fontSize:14,fontWeight:700,cursor:"pointer",lineHeight:1}}>+</button></div>
               </div>
               <div style={{flex:"0 0 70px",textAlign:"center"}}>
                 <label style={{fontSize:9,color:"rgba(255,255,255,0.3)",fontWeight:600,display:"block",marginBottom:3}}>MARGIN</label>
@@ -641,7 +642,7 @@ function AdminPanel({user, tiers, setTiers, team, setTeam, onVisibilityChange}) 
           <div style={{fontSize:12,fontWeight:700,color:GOLD,letterSpacing:1,marginBottom:12}}>ADD NEW TIER</div>
           <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
             <div style={{flex:"1 1 180px"}}><label style={{fontSize:10,color:"rgba(255,255,255,0.4)",fontWeight:600,display:"block",marginBottom:4}}>Tier Name</label><input value={newTier.name} onChange={e=>setNewTier({...newTier,name:e.target.value})} onKeyDown={e=>{if(e.key==="Enter")addTier()}} placeholder="e.g. Homeowner, Contractor..." style={{width:"100%",padding:"10px 14px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#fff",fontSize:13,outline:"none"}}/></div>
-            <div style={{flex:"0 0 120px"}}><label style={{fontSize:10,color:"rgba(255,255,255,0.4)",fontWeight:600,display:"block",marginBottom:4}}>Markup</label><input type="number" step="0.05" min="1" max="5" value={newTier.markup} onChange={e=>setNewTier({...newTier,markup:parseFloat(e.target.value)||1})} style={{width:"100%",padding:"10px 14px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:GOLD,fontSize:14,fontFamily:"'IBM Plex Mono',monospace",outline:"none",textAlign:"center",fontWeight:700}}/></div>
+            <div style={{flex:"0 0 160px"}}><label style={{fontSize:10,color:"rgba(255,255,255,0.4)",fontWeight:600,display:"block",marginBottom:4}}>Markup</label><div style={{display:"flex",alignItems:"center",gap:0}}><button onClick={()=>setNewTier({...newTier,markup:Math.max(1,Math.round((newTier.markup-0.05)*100)/100)})} style={{padding:"10px 8px",borderRadius:"6px 0 0 6px",border:"1px solid rgba(255,255,255,0.1)",borderRight:"none",background:"rgba(255,255,255,0.05)",color:GOLD,fontSize:16,fontWeight:700,cursor:"pointer",lineHeight:1}}>−</button><input type="text" inputMode="decimal" value={newTier.markupText !== undefined ? newTier.markupText : newTier.markup.toFixed(2)} onFocus={e=>{e.target.select();setNewTier({...newTier,markupText:newTier.markup.toFixed(2)})}} onChange={e=>setNewTier({...newTier,markupText:e.target.value})} onBlur={e=>{const v=parseFloat(e.target.value)||1;const clamped=Math.max(1,Math.min(5,v));setNewTier({name:newTier.name,markup:clamped})}} onKeyDown={e=>{if(e.key==="Enter"){e.target.blur();addTier()}}} style={{width:70,padding:"10px 6px",border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:GOLD,fontSize:14,fontFamily:"'IBM Plex Mono',monospace",outline:"none",textAlign:"center",fontWeight:700}}/><button onClick={()=>setNewTier({...newTier,markup:Math.min(5,Math.round((newTier.markup+0.05)*100)/100)})} style={{padding:"10px 8px",borderRadius:"0 6px 6px 0",border:"1px solid rgba(255,255,255,0.1)",borderLeft:"none",background:"rgba(255,255,255,0.05)",color:GOLD,fontSize:16,fontWeight:700,cursor:"pointer",lineHeight:1}}>+</button></div></div>
             <div style={{flex:"0 0 90px",textAlign:"center"}}><label style={{fontSize:10,color:"rgba(255,255,255,0.4)",fontWeight:600,display:"block",marginBottom:4}}>Margin</label><div style={{padding:"10px",fontSize:14,fontWeight:700,color:GOLD,fontFamily:"'IBM Plex Mono',monospace"}}>{markupToMargin(newTier.markup)}%</div></div>
             <button onClick={addTier} style={{padding:"10px 20px",borderRadius:6,border:"none",background:GOLD,color:G,fontSize:12,fontWeight:800,cursor:"pointer",letterSpacing:1}}>+ Add Tier</button>
           </div>
@@ -1249,7 +1250,7 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
       const next = prev.map(i => i.sku===sku && i.section===section ? {...i, visible:!i.visible} : i);
       const hidden = next.filter(i => !i.visible).map(i => i.sku + '|' + i.section);
       saveSetting('hidden_skus', hidden);
-      if (onVisibilityChange) onVisibilityChange(hidden);
+      setTimeout(() => { if (onVisibilityChange) onVisibilityChange(hidden); }, 0);
       return next;
     });
   };
@@ -1258,7 +1259,7 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
       const next = prev.map(i => i.section===sec ? {...i, visible} : i);
       const hidden = next.filter(i => !i.visible).map(i => i.sku + '|' + i.section);
       saveSetting('hidden_skus', hidden);
-      if (onVisibilityChange) onVisibilityChange(hidden);
+      setTimeout(() => { if (onVisibilityChange) onVisibilityChange(hidden); }, 0);
       return next;
     });
   };
