@@ -179,29 +179,27 @@ const getMS = (col) => MAT_STYLE[col] || {bg:"#f0f0f0",color:"#555",label:col,bo
 /* ─── S4S TRIMBOARD PRODUCT LINE DEFINITIONS ─── */
 const S4S_PRODUCT_LINES = [
   {
-    key:"gesso_elite",
-    name:"Gesso Elite",
-    logoSrc:"https://www.gardenstatelumber.com/wp-content/uploads/gsl-s4s-gesso-elite-logo_dark_2000px_transparency.png",
-    matKey:"ge_s4s",
-    gradient:"linear-gradient(145deg, #000 0%, #000 40%, #0C1F0E 100%)",
-    accentColor:"#2A6B3A",
-    desc:"Introducing our newest line of exceptional Primed Radiata Pine S4S boards featuring 2 coats of exterior gesso coat primer + 1 coat of exterior acrylic latex primer! Stocking both 4/4\" and 5/4\" thicknesses across all widths in 8' and 16' lengths.",
-    skuPrefixes:["GSL"],
+    key:"platinum_protected",
+    name:"Platinum Protected",
+    logoSrc:"https://www.gardenstatelumber.com/wp-content/uploads/gsl-s4s-platinum-protected-logo_dark_2000px_transparency.png",
+    matKey:"xlp_30yr",
+    gradient:"linear-gradient(145deg, #000 0%, #000 40%, #1A0A28 100%)",
+    accentColor:"#6B2A8B",
+    desc:"Providing unparalleled protection against rot, fungus, mold, mildew, and even termites, PLATINUM PROTECTED stands apart from other trim products for its multi-phase protection process that covers all four sides of the substrate and ensures the ultimate in defense against the natural environment. Made from a clear finger-joint Radiata substrate and Coated with 1 pass of exterior Gesso Primer + 2 passes of vacuum coated exterior bright white, acrylic latex water based primer.",
+    skuPrefixes:["XLP"],
     sizes:[
-      {nominal:"1 x 2",actual:"23/32 x 1-1/2",sku:"GSL12"},
-      {nominal:"1 x 3",actual:"23/32 x 2-1/2",sku:"GSL13"},
-      {nominal:"1 x 4",actual:"23/32 x 3-1/2",sku:"GSL14"},
-      {nominal:"1 x 5",actual:"23/32 x 4-1/2",sku:"GSL15"},
-      {nominal:"1 x 6",actual:"23/32 x 5-1/2",sku:"GSL16"},
-      {nominal:"1 x 8",actual:"23/32 x 7-1/4",sku:"GSL18"},
-      {nominal:"1 x 10",actual:"23/32 x 9-1/4",sku:"GSL110"},
-      {nominal:"1 x 12",actual:"23/32 x 11-1/4",sku:"GSL112"},
-      {nominal:"5/4 x 4",actual:"1-1/8 x 3-1/2",sku:"GSL544"},
-      {nominal:"5/4 x 5",actual:"1-1/8 x 4-1/2",sku:"GSL545"},
-      {nominal:"5/4 x 6",actual:"1-1/8 x 5-1/2",sku:"GSL546"},
-      {nominal:"5/4 x 8",actual:"1-1/8 x 7-1/4",sku:"GSL548"},
-      {nominal:"5/4 x 10",actual:"1-1/8 x 9-1/4",sku:"GSL5410"},
-      {nominal:"5/4 x 12",actual:"1-1/8 x 11-1/4",sku:"GSL5412"},
+      {nominal:"1 x 3",actual:"23/32 x 2-1/2",sku:"XLP13"},
+      {nominal:"1 x 4",actual:"23/32 x 3-1/2",sku:"XLP14"},
+      {nominal:"1 x 5",actual:"23/32 x 4-1/2",sku:"XLP15"},
+      {nominal:"1 x 6",actual:"23/32 x 5-1/2",sku:"XLP16"},
+      {nominal:"1 x 8",actual:"23/32 x 7-1/4",sku:"XLP18"},
+      {nominal:"1 x 10",actual:"23/32 x 9-1/4",sku:"XLP110"},
+      {nominal:"1 x 12",actual:"23/32 x 11-1/4",sku:"XLP112"},
+      {nominal:"5/4 x 4",actual:"1-1/8 x 3-1/2",sku:"XLP544"},
+      {nominal:"5/4 x 6",actual:"1-1/8 x 5-1/2",sku:"XLP546"},
+      {nominal:"5/4 x 8",actual:"1-1/8 x 7-1/4",sku:"XLP548"},
+      {nominal:"5/4 x 10",actual:"1-1/8 x 9-1/4",sku:"XLP5410"},
+      {nominal:"5/4 x 12",actual:"1-1/8 x 11-1/4",sku:"XLP5412"},
     ]
   },
   {
@@ -230,27 +228,29 @@ const S4S_PRODUCT_LINES = [
     ]
   },
   {
-    key:"platinum_protected",
-    name:"Platinum Protected",
-    logoSrc:"https://www.gardenstatelumber.com/wp-content/uploads/gsl-s4s-platinum-protected-logo_dark_2000px_transparency.png",
-    matKey:"xlp_30yr",
-    gradient:"linear-gradient(145deg, #000 0%, #000 40%, #1A0A28 100%)",
-    accentColor:"#6B2A8B",
-    desc:"Providing unparalleled protection against rot, fungus, mold, mildew, and even termites, PLATINUM PROTECTED stands apart from other trim products for its multi-phase protection process that covers all four sides of the substrate and ensures the ultimate in defense against the natural environment. Made from a clear finger-joint Radiata substrate and Coated with 1 pass of exterior Gesso Primer + 2 passes of vacuum coated exterior bright white, acrylic latex water based primer.",
-    skuPrefixes:["XLP"],
+    key:"gesso_elite",
+    name:"Gesso Elite",
+    logoSrc:"https://www.gardenstatelumber.com/wp-content/uploads/gsl-s4s-gesso-elite-logo_dark_2000px_transparency.png",
+    matKey:"ge_s4s",
+    gradient:"linear-gradient(145deg, #000 0%, #000 40%, #0C1F0E 100%)",
+    accentColor:"#2A6B3A",
+    desc:"Introducing our newest line of exceptional Primed Radiata Pine S4S boards featuring 2 coats of exterior gesso coat primer + 1 coat of exterior acrylic latex primer! Stocking both 4/4\" and 5/4\" thicknesses across all widths in 8' and 16' lengths.",
+    skuPrefixes:["GSL"],
     sizes:[
-      {nominal:"1 x 3",actual:"23/32 x 2-1/2",sku:"XLP13"},
-      {nominal:"1 x 4",actual:"23/32 x 3-1/2",sku:"XLP14"},
-      {nominal:"1 x 5",actual:"23/32 x 4-1/2",sku:"XLP15"},
-      {nominal:"1 x 6",actual:"23/32 x 5-1/2",sku:"XLP16"},
-      {nominal:"1 x 8",actual:"23/32 x 7-1/4",sku:"XLP18"},
-      {nominal:"1 x 10",actual:"23/32 x 9-1/4",sku:"XLP110"},
-      {nominal:"1 x 12",actual:"23/32 x 11-1/4",sku:"XLP112"},
-      {nominal:"5/4 x 4",actual:"1-1/8 x 3-1/2",sku:"XLP544"},
-      {nominal:"5/4 x 6",actual:"1-1/8 x 5-1/2",sku:"XLP546"},
-      {nominal:"5/4 x 8",actual:"1-1/8 x 7-1/4",sku:"XLP548"},
-      {nominal:"5/4 x 10",actual:"1-1/8 x 9-1/4",sku:"XLP5410"},
-      {nominal:"5/4 x 12",actual:"1-1/8 x 11-1/4",sku:"XLP5412"},
+      {nominal:"1 x 2",actual:"23/32 x 1-1/2",sku:"GSL12"},
+      {nominal:"1 x 3",actual:"23/32 x 2-1/2",sku:"GSL13"},
+      {nominal:"1 x 4",actual:"23/32 x 3-1/2",sku:"GSL14"},
+      {nominal:"1 x 5",actual:"23/32 x 4-1/2",sku:"GSL15"},
+      {nominal:"1 x 6",actual:"23/32 x 5-1/2",sku:"GSL16"},
+      {nominal:"1 x 8",actual:"23/32 x 7-1/4",sku:"GSL18"},
+      {nominal:"1 x 10",actual:"23/32 x 9-1/4",sku:"GSL110"},
+      {nominal:"1 x 12",actual:"23/32 x 11-1/4",sku:"GSL112"},
+      {nominal:"5/4 x 4",actual:"1-1/8 x 3-1/2",sku:"GSL544"},
+      {nominal:"5/4 x 5",actual:"1-1/8 x 4-1/2",sku:"GSL545"},
+      {nominal:"5/4 x 6",actual:"1-1/8 x 5-1/2",sku:"GSL546"},
+      {nominal:"5/4 x 8",actual:"1-1/8 x 7-1/4",sku:"GSL548"},
+      {nominal:"5/4 x 10",actual:"1-1/8 x 9-1/4",sku:"GSL5410"},
+      {nominal:"5/4 x 12",actual:"1-1/8 x 11-1/4",sku:"GSL5412"},
     ]
   },
   {
@@ -323,10 +323,9 @@ function S4SProductLineSection({line, allItems, mult, pricingLabel, levelVis, sh
 
   if (resolvedSizes.length === 0) return null;
 
-  /* Group by thickness */
+  /* Group by thickness: 1/2" stays separate if present; 4/4 and 5/4 render together in one table */
   const halfSizes = resolvedSizes.filter(s => s.nominal.startsWith("1/2"));
-  const fourFourSizes = resolvedSizes.filter(s => s.nominal.startsWith("1 x") || s.nominal.startsWith("1x"));
-  const fiveQuarterSizes = resolvedSizes.filter(s => s.nominal.startsWith("5/4"));
+  const mainSizes = resolvedSizes.filter(s => !s.nominal.startsWith("1/2"));
 
   const renderGroup = (label, items) => {
     if (items.length === 0) return null;
@@ -341,6 +340,11 @@ function S4SProductLineSection({line, allItems, mult, pricingLabel, levelVis, sh
               <th style={{padding:"6px 10px",textAlign:"left",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:10,letterSpacing:0.5,minWidth:100}}>SKU</th>
               <th style={{padding:"6px 10px",textAlign:"left",color:GOLD,fontWeight:800,fontSize:10,letterSpacing:1,minWidth:90}}>SIZE</th>
               <th style={{padding:"6px 10px",textAlign:"left",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:10,letterSpacing:0.5,minWidth:110}}>ACTUAL</th>
+              <th style={{padding:"6px 8px",textAlign:"left",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:9,minWidth:80}}>LENGTHS</th>
+              <th style={{padding:"6px 8px",textAlign:"center",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:9,minWidth:70}}>
+                <div>UNIT QTY</div>
+                {sharedUnitQty && <div style={{fontSize:10,fontWeight:800,color:GOLD,marginTop:2,fontFamily:"'IBM Plex Mono',monospace"}}>{sharedUnitQty}</div>}
+              </th>
               {allLevelNums.map(n => {
                 return (
                 <th key={n} style={{padding:"6px 8px",textAlign:"center",fontWeight:800,fontSize:9,letterSpacing:0.5,minWidth:75,color:n===1?GOLD:"rgba(255,255,255,0.5)"}}>
@@ -348,11 +352,6 @@ function S4SProductLineSection({line, allItems, mult, pricingLabel, levelVis, sh
                   <div style={{fontSize:8,color:"rgba(255,255,255,0.25)",marginTop:1}}>{levelDescs[n]?.match(/^\d+\+?\s*/)?.[0]||""}</div>
                 </th>
               )})}
-              <th style={{padding:"6px 8px",textAlign:"left",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:9,minWidth:80}}>LENGTHS</th>
-              <th style={{padding:"6px 8px",textAlign:"center",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:9,minWidth:70}}>
-                <div>UNIT QTY</div>
-                {sharedUnitQty && <div style={{fontSize:10,fontWeight:800,color:GOLD,marginTop:2,fontFamily:"'IBM Plex Mono',monospace"}}>{sharedUnitQty}</div>}
-              </th>
             </tr></thead>
             <tbody>{items.map((s, idx) => {
               const rowBg = idx % 2 === 0 ? "#0D0D0D" : "#111214";
@@ -361,6 +360,8 @@ function S4SProductLineSection({line, allItems, mult, pricingLabel, levelVis, sh
                   <td style={{padding:"8px 10px",fontFamily:"'IBM Plex Mono',monospace",fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.8)"}}>{s.fullSku}</td>
                   <td style={{padding:"8px 10px",fontWeight:800,color:"#fff",fontSize:14}}>{s.nominal}</td>
                   <td style={{padding:"8px 10px",fontFamily:"'IBM Plex Mono',monospace",fontSize:12,fontWeight:600,color:"rgba(255,255,255,0.6)"}}>{s.actual}</td>
+                  <td style={{padding:"6px 8px",fontFamily:"'IBM Plex Mono',monospace",fontSize:12,fontWeight:600,color:"rgba(255,255,255,0.6)"}}>{s.lengths}</td>
+                  <td style={{padding:"6px 8px",textAlign:"center",fontFamily:"'IBM Plex Mono',monospace",fontSize:12,fontWeight:600,color:"rgba(255,255,255,0.6)"}}>{s.mp > 0 && !sharedUnitQty ? s.mp + " " + s.mu : ""}</td>
                   {allLevelNums.map(n => {
                     const lv = s.levels.find(l => l.level === n);
                     if (!lv) return <td key={n} style={{padding:"6px 8px",textAlign:"center"}}></td>;
@@ -374,8 +375,6 @@ function S4SProductLineSection({line, allItems, mult, pricingLabel, levelVis, sh
                       </td>
                     );
                   })}
-                  <td style={{padding:"6px 8px",fontFamily:"'IBM Plex Mono',monospace",fontSize:12,fontWeight:600,color:"rgba(255,255,255,0.6)"}}>{s.lengths}</td>
-                  <td style={{padding:"6px 8px",textAlign:"center",fontFamily:"'IBM Plex Mono',monospace",fontSize:12,fontWeight:600,color:"rgba(255,255,255,0.6)"}}>{s.mp > 0 && !sharedUnitQty ? s.mp + " " + s.mu : ""}</td>
                 </tr>
               );
             })}</tbody>
@@ -408,8 +407,7 @@ function S4SProductLineSection({line, allItems, mult, pricingLabel, levelVis, sh
       {expanded && (
         <div style={{padding:"16px 20px",animation:"fadeIn 0.2s ease"}}>
           {halfSizes.length > 0 && renderGroup("1/2\" Boards", halfSizes)}
-          {renderGroup("4/4\" (1x) Boards", fourFourSizes)}
-          {renderGroup("5/4\" Boards", fiveQuarterSizes)}
+          {renderGroup("Boards", mainSizes)}
         </div>
       )}
     </div>
