@@ -2018,6 +2018,9 @@ function App() {
           </>;})()}
 
 
+          {sec === "s4s_trimboards" ? (
+            <S4STrimboardsSection allItems={allItems} mult={activeMult} pricingLabel={pricingLabel} levelVis={levelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn}/>
+          ) : (
           <div ref={tableRef} style={{background:"rgba(0,0,0,0.2)",borderRadius:12,border:"1px solid rgba(255,255,255,0.06)",overflow:"hidden",animation:"fadeIn 0.2s ease"}}>
             {colOrders[sec] && (
               <div style={{padding:"4px 14px",borderBottom:"1px solid rgba(255,255,255,0.04)",display:"flex",justifyContent:"flex-end",background:"linear-gradient(to right,#000 0%,#0C1F0E 100%)"}}>
@@ -2168,6 +2171,7 @@ function App() {
               <span style={{fontSize:11,color:"rgba(255,255,255,0.5)",fontWeight:600,fontFamily:"'IBM Plex Mono',monospace"}}>{filtered.length>0?("Showing "+visible.length+" of "+filtered.length):"No results"}{hasMore?" — scroll for more":""}</span>
             </div>
           </div>
+          )}
 
 
           <div style={{marginTop:16,padding:"12px 16px",background:"rgba(0,0,0,0.2)",borderRadius:8,border:"1px solid rgba(255,255,255,0.04)",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
