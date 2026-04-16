@@ -338,7 +338,7 @@ function S4SProductLineSection({line, allItems, mult, pricingLabel, levelVis, sh
               <th style={{padding:"6px 10px",textAlign:"left",color:"rgba(255,255,255,0.5)",fontWeight:700,fontSize:10,letterSpacing:0.5,minWidth:100}}>SKU</th>
               {allLevelNums.map(n => {
                 const isSell = mult > 1;
-                const sellHeaderStyle = isSell ? {background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 7s ease-in-out infinite",color:"#000",borderRadius:3} : {};
+                const sellHeaderStyle = isSell ? {background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 10.5s ease-in-out infinite",color:"#000",borderRadius:3} : {};
                 return (
                 <th key={n} style={{padding:"6px 8px",textAlign:"center",fontWeight:800,fontSize:9,letterSpacing:0.5,minWidth:75,...sellHeaderStyle,...(!isSell && {color:n===1?GOLD:"rgba(255,255,255,0.5)"})}}>
                   <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{n===1?"BASE":levelDescs[n]?.replace(/ PRICE$/i,"").replace(/^\d+\+?\s*/,"") || ("L"+n)}</div>
@@ -861,7 +861,7 @@ function Lookup({mult, allItems, pricingLabel, levelVis, showAllPriceLevelsBtn, 
                 <thead><tr style={{borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
                   <th style={{padding:"8px 12px",textAlign:"center",color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:700,letterSpacing:1}}>SUBSTRATE</th>
                   <th style={{padding:"8px 12px",textAlign:"center",color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:700,letterSpacing:1}}>FULL SKU</th>
-                  <th style={{padding:"8px 12px",textAlign:"center",fontSize:10,fontWeight:800,letterSpacing:1,...(mult > 1 ? {background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 7s ease-in-out infinite",color:"#000",borderRadius:3} : {color:"rgba(255,255,255,0.6)"})}}><div style={{textAlign:"center"}}>{mult > 1 ? "CUSTOMER SELL" : "GSL COST"}</div>{mult > 1 && <div style={{fontSize:11,fontWeight:900,color:mult > 1 ? "rgba(0,0,0,0.7)" : GOLD,marginTop:2}}>{pricingLabel}</div>}</th>
+                  <th style={{padding:"8px 12px",textAlign:"center",fontSize:10,fontWeight:800,letterSpacing:1,...(mult > 1 ? {background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 10.5s ease-in-out infinite",color:"#000",borderRadius:3} : {color:"rgba(255,255,255,0.6)"})}}><div style={{textAlign:"center"}}>{mult > 1 ? "CUSTOMER SELL" : "GSL COST"}</div>{mult > 1 && <div style={{fontSize:13,fontWeight:900,color:"rgba(0,0,0,0.7)",marginTop:2}}>({pricingLabel})</div>}</th>
                   <th style={{padding:"8px 12px",textAlign:"center",color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:700,letterSpacing:1}}>LENGTHS</th>
                   <th style={{padding:"8px 12px",textAlign:"center",color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:700,letterSpacing:1}}>UNIT QTY</th>
                 </tr></thead>
@@ -905,7 +905,7 @@ function Lookup({mult, allItems, pricingLabel, levelVis, showAllPriceLevelsBtn, 
                 <div style={{display:"flex",alignItems:"flex-end",gap:12}}>
                   <div style={{textAlign:"right"}}>
                     {mult > 1 ? (
-                      <div style={{marginBottom:3}}><span style={{fontSize:13,fontWeight:900,color:"#000",padding:"3px 10px",borderRadius:4,background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 7s ease-in-out infinite",letterSpacing:1}}>CUSTOMER SELL</span> <span style={{fontSize:12,color:"rgba(255,255,255,0.55)",fontWeight:700}}>= Cost to your customer</span></div>
+                      <div style={{marginBottom:3}}><span style={{fontSize:13,fontWeight:900,color:"#000",padding:"3px 10px",borderRadius:4,background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 10.5s ease-in-out infinite",letterSpacing:1}}>CUSTOMER SELL</span> <span style={{fontSize:12,color:"rgba(255,255,255,0.55)",fontWeight:700}}>= Cost to your customer</span></div>
                     ) : (
                       <div style={{marginBottom:3}}><span style={{fontSize:13,color:GOLD,fontWeight:800}}>GSL COST</span> <span style={{fontSize:12,color:"rgba(255,255,255,0.55)",fontWeight:700}}>= Your cost from GSL</span></div>
                     )}
@@ -930,7 +930,7 @@ function Lookup({mult, allItems, pricingLabel, levelVis, showAllPriceLevelsBtn, 
                       <th style={{padding:"5px 10px",fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.35)",letterSpacing:0.8,textAlign:"left",borderBottom:"1px solid rgba(197,165,90,0.15)",position:"sticky",left:0,background:"#0A0A0A",zIndex:2}}></th>
                       {allPricesData.mats.map(m => (
                         mult > 1 ? (
-                          <th key={m.col+"_s"} colSpan={2} style={{padding:"5px 8px",fontSize:11,fontWeight:900,color:"#000",letterSpacing:0.8,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.15)",borderLeft:"1px solid rgba(255,255,255,0.06)",minWidth:80,background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 7s ease-in-out infinite",borderRadius:3}}><div style={{textAlign:"center"}}>CUSTOMER SELL</div>{!selling && <div style={{fontSize:11,fontWeight:900,color:"rgba(0,0,0,0.7)",marginTop:1}}>({mult.toFixed(2)}{"\u00D7"})</div>}
+                          <th key={m.col+"_s"} colSpan={2} style={{padding:"5px 8px",fontSize:11,fontWeight:900,color:"#000",letterSpacing:0.8,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.15)",borderLeft:"1px solid rgba(255,255,255,0.06)",minWidth:80,background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 10.5s ease-in-out infinite",borderRadius:3}}><div style={{textAlign:"center"}}>CUSTOMER SELL</div><div style={{fontSize:13,fontWeight:900,color:"rgba(0,0,0,0.7)",marginTop:1}}>({pricingLabel})</div>
                           </th>
                         ) : (
                           <th key={m.col+"_c"} colSpan={2} style={{padding:"5px 8px",fontSize:11,fontWeight:800,color:GOLD,letterSpacing:0.8,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.15)",borderLeft:"1px solid rgba(255,255,255,0.06)",minWidth:80}}>COST</th>
@@ -1749,6 +1749,7 @@ function App() {
   const selling = sellingTier !== null;
   const activeMult = selling ? (tiers.find(t=>t.id===sellingTier)?.markup||1) : manualMarkup;
   const tierName = selling ? (tiers.find(t=>t.id===sellingTier)?.name||'') : '';
+  const pricingLabel = selling ? tierName : `${activeMult.toFixed(2)}\u00D7 markup`;
   const markupToMarginApp = (m) => ((1 - 1/m) * 100).toFixed(1);
 
   const [expandedSku, setExpandedSku] = useState(null);
@@ -1957,7 +1958,7 @@ function App() {
           {/* UNIFIED SEARCH BAR — Lookup (Mouldings only) + Grid Filter (all except Hardwood S4S) */}
           {sec !== "hardwood_s4s" && (
             <div style={Object.assign({},controlsWidth?{maxWidth:controlsWidth}:{})}>
-              <Lookup mult={activeMult} allItems={allItems} pricingLabel={selling ? tiers.find(t=>t.id===sellingTier)?.name || '' : `${activeMult.toFixed(2)}× markup`} levelVis={levelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn} showLookup={sec==="mouldings"} srch={srch} setSrch={setSrch} showFilter={true} selling={selling}/>
+              <Lookup mult={activeMult} allItems={allItems} pricingLabel={pricingLabel} levelVis={levelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn} showLookup={sec==="mouldings"} srch={srch} setSrch={setSrch} showFilter={true} selling={selling}/>
             </div>
           )}
 
@@ -2090,7 +2091,7 @@ function App() {
                                         <th style={{padding:"4px 8px",borderBottom:"1px solid rgba(197,165,90,0.12)",position:"sticky",left:0,background:"rgba(0,0,0,0.6)",zIndex:2}}></th>
                                         {activeMats.map(m => (
                                           activeMult > 1 ? (
-                                            <th key={m.col+"_s"} colSpan={2} style={{padding:"4px 6px",fontSize:10,fontWeight:900,color:"#000",letterSpacing:0.5,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.12)",borderLeft:"1px solid rgba(255,255,255,0.05)",minWidth:70,background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 7s ease-in-out infinite",borderRadius:3}}><div style={{textAlign:"center"}}>CUSTOMER SELL</div>{!selling && <div style={{fontSize:10,fontWeight:900,color:"rgba(0,0,0,0.7)",marginTop:1}}>({activeMult.toFixed(2)}{"\u00D7"})</div>}
+                                            <th key={m.col+"_s"} colSpan={2} style={{padding:"4px 6px",fontSize:10,fontWeight:900,color:"#000",letterSpacing:0.5,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.12)",borderLeft:"1px solid rgba(255,255,255,0.05)",minWidth:70,background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)",backgroundSize:"200% 100%",animation:"sellShimmer 10.5s ease-in-out infinite",borderRadius:3}}><div style={{textAlign:"center"}}>CUSTOMER SELL</div><div style={{fontSize:12,fontWeight:900,color:"rgba(0,0,0,0.7)",marginTop:1}}>({pricingLabel})</div>
                                             </th>
                                           ) : (
                                             <th key={m.col+"_c"} colSpan={2} style={{padding:"4px 6px",fontSize:10,fontWeight:800,color:GOLD,letterSpacing:0.5,textAlign:"center",borderBottom:"1px solid rgba(197,165,90,0.12)",borderLeft:"1px solid rgba(255,255,255,0.05)",minWidth:70}}>GSL COST</th>
