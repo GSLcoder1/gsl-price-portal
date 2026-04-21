@@ -1714,6 +1714,10 @@ function SectionCard({ section, isActive, compact, onClick }) {
   const label = section.key === "s4s_trimboards" ? "S4S Trimboards" : section.label;
   const subLabel = section.key === "s4s_trimboards" ? "Primed Pine" : null;
   const h = compact ? 92 : 112;
+  /* v21: Scale pump-up on selection. State-driven so hover doesn't clobber it. */
+  const [hovered, setHovered] = useState(false);
+  const scale = isActive ? 1.05 : 1;
+  const lift = hovered && !isActive ? -1 : 0;
   return (
     <button
       onClick={onClick}
@@ -1735,17 +1739,20 @@ function SectionCard({ section, isActive, compact, onClick }) {
         backgroundClip: isActive ? "padding-box, border-box" : undefined,
         padding: 0,
         cursor: "pointer",
-        transition: "transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s",
+        transition: "transform 0.25s cubic-bezier(0.34, 1.4, 0.64, 1), box-shadow 0.25s ease, border-color 0.2s",
+        transform: `translateY(${lift}px) scale(${scale})`,
+        transformOrigin: "center center",
+        zIndex: isActive ? 2 : 1,
         boxShadow: isActive
-          ? "0 0 0 1px rgba(232,212,138,0.15), 0 6px 20px rgba(168,136,58,0.25), 0 2px 8px rgba(0,0,0,0.4)"
+          ? "0 0 0 1px rgba(232,212,138,0.18), 0 10px 28px rgba(168,136,58,0.4), 0 4px 12px rgba(0,0,0,0.5)"
           : "0 2px 8px rgba(0,0,0,0.4)",
         fontFamily: "'Archivo',sans-serif",
         textAlign: "left",
         width: "100%",
         display: "block",
       }}
-      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-1px)"; }}
-      onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       {/* Hero image (v20: mirror Panels & Sheets for better composition) */}
       {hero ? (
@@ -1756,7 +1763,7 @@ function SectionCard({ section, isActive, compact, onClick }) {
           backgroundPosition: "center",
           opacity: isActive ? 1 : 0.78,
           transition: "opacity 0.2s",
-          transform: section.key === "panels_sheets" ? "scaleX(-1)" : "none",
+          transform: (section.key === "panels_sheets" || section.key === "hardwood_s4s" || section.key === "door_jambs") ? "scaleX(-1)" : "none",
         }}/>
       ) : (
         <div style={{
@@ -1835,15 +1842,17 @@ function SectionVisualSelector({ sec, setSec, setS4sFilter }) {
       boxShadow: "0 6px 20px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4)",
     }}>
       <div style={{ maxWidth: 1500, margin: "0 auto", padding: "16px 24px 18px" }}>
-        {/* v20: Hero banner removed. Tiles alone, always visible, horizontally scrollable. */}
+        {/* v20: Hero banner removed. Tiles alone, always visible, horizontally scrollable.
+            v21: Vertical padding + visible overflowY so selected tile's scale-up + glow aren't clipped. */}
         <div style={{
           display: "flex",
           gap: 10,
           overflowX: "auto",
-          overflowY: "hidden",
+          overflowY: "visible",
           WebkitOverflowScrolling: "touch",
           scrollSnapType: "x mandatory",
-          paddingBottom: 6,
+          paddingTop: 6,
+          paddingBottom: 10,
           /* Fade on the right edge to hint at more content */
           maskImage: "linear-gradient(to right, #000 0%, #000 92%, transparent 100%)",
           WebkitMaskImage: "linear-gradient(to right, #000 0%, #000 92%, transparent 100%)",
@@ -1873,6 +1882,14 @@ function SectionVisualSelector({ sec, setSec, setS4sFilter }) {
 
 function App() {
   const [user, setUser] = useState(null);
+  /* v21: Ensure the page starts at the top whenever the user logs in (or on app mount
+     with a pre-authenticated session). Prevents the PricingBar/Multiplier from being
+     hidden behind the sticky header due to restored browser scroll position. */
+  useEffect(() => {
+    if (user) {
+      window.scrollTo(0, 0);
+    }
+  }, [user]);
   const [page, setPage] = useState("portal");
   const [sec, setSec] = useState("mouldings");
   const [srch, setSrch] = useState("");
