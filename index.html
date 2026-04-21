@@ -1763,7 +1763,7 @@ function SectionCard({ section, isActive, compact, onClick }) {
           backgroundPosition: "center",
           opacity: isActive ? 1 : 0.78,
           transition: "opacity 0.2s",
-          transform: (section.key === "panels_sheets" || section.key === "hardwood_s4s" || section.key === "door_jambs") ? "scaleX(-1)" : "none",
+          transform: (section.key === "panels_sheets" || section.key === "door_jambs") ? "scaleX(-1)" : "none",
         }}/>
       ) : (
         <div style={{
@@ -2186,7 +2186,7 @@ function App() {
         )}
       </div>
 
-      <div style={{maxWidth:1500,margin:"0 auto",padding:"44px 24px 20px"}}>
+      <div style={{maxWidth:1500,margin:"0 auto",padding:"60px 24px 20px"}}>
         {page === "admin" && <AdminPanel user={user} tiers={tiers} setTiers={setTiers} team={team} setTeam={setTeam}/>}
         {page === "productadmin" && <ProductAdmin levelVis={levelVis} setLevelVis={setLevelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn} setShowAllPriceLevelsBtn={setShowAllPriceLevelsBtn} hiddenSkuSet={hiddenSkuSet} onVisibilityChange={(hidden) => setHiddenSkuSet(new Set(hidden))}/>}
 
@@ -2230,8 +2230,8 @@ function App() {
           {showFloatingHeader && (()=>{
             const markupBarH = activeMult !== 1 ? 34 : 0;
             return <>
-            <div style={{position:"fixed",top:page==="portal"?107+markupBarH:50,left:0,right:0,zIndex:89,height:page==="portal"?72:62,background:"linear-gradient(180deg,rgba(0,0,0,1) 0%,rgba(0,0,0,0.98) 70%,rgba(0,0,0,0.95) 100%)",pointerEvents:"none"}}></div>
-            <div style={{position:"fixed",top:page==="portal"?150+markupBarH:80,left:tableLeft,width:tableWidth,zIndex:90,background:"linear-gradient(180deg,rgba(0,0,0,0.98) 0%,rgba(0,0,0,0.95) 100%)",borderBottom:"2px solid rgba(197,165,90,0.25)",backdropFilter:"blur(12px)",height:50,overflow:"hidden",pointerEvents:"none"}}>
+            <div style={{position:"fixed",top:page==="portal"?242+markupBarH:50,left:0,right:0,zIndex:89,height:page==="portal"?72:62,background:"linear-gradient(180deg,rgba(0,0,0,1) 0%,rgba(0,0,0,0.98) 70%,rgba(0,0,0,0.95) 100%)",pointerEvents:"none"}}></div>
+            <div style={{position:"fixed",top:page==="portal"?252+markupBarH:80,left:tableLeft,width:tableWidth,zIndex:90,background:"linear-gradient(180deg,rgba(0,0,0,0.98) 0%,rgba(0,0,0,0.95) 100%)",borderBottom:"2px solid rgba(197,165,90,0.25)",backdropFilter:"blur(12px)",height:50,overflow:"hidden",pointerEvents:"none"}}>
               {orderedCols.map((c,i) => {
                 const pos = colPositions[i];
                 if (!pos) return null;
