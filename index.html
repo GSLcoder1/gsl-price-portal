@@ -210,6 +210,97 @@ function applyOverridesToCatTuple(tuple, section, overrides) {
   return [patched.sku, patched.desc, patched.mats];
 }
 
+/* ─── PUBLISHED CATALOG (localStorage) ────────────────────────────────
+   When set, the "live" catalog read by the main pricing views is the
+   uploaded-and-published one instead of the embedded CAT constant. Null
+   = fall back to embedded CAT. Meta stores publish time + counts for
+   the status badge. Kept intentionally simple: last write wins, one
+   published catalog at a time, revert restores the embedded data.
+   ───────────────────────────────────────────────────────────────────── */
+const PUBLISHED_KEY = "gsl_published_catalog";
+const PUBLISHED_META_KEY = "gsl_published_meta";
+
+function loadPublishedCatalog() {
+  try {
+    const raw = localStorage.getItem(PUBLISHED_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+function loadPublishedMeta() {
+  try {
+    const raw = localStorage.getItem(PUBLISHED_META_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+function savePublishedCatalog(cat, meta) {
+  try {
+    localStorage.setItem(PUBLISHED_KEY, JSON.stringify(cat));
+    if (meta) localStorage.setItem(PUBLISHED_META_KEY, JSON.stringify(meta));
+    return true;
+  } catch (e) { console.error("savePublishedCatalog", e); return false; }
+}
+function clearPublishedCatalog() {
+  try {
+    localStorage.removeItem(PUBLISHED_KEY);
+    localStorage.removeItem(PUBLISHED_META_KEY);
+    return true;
+  } catch { return false; }
+}
+
+/* Convert parsed-admin items (array of {sku, desc, section, mats}) back
+   into the CAT tuple shape grouped by section: {sectionKey: [[sku, desc, mats], ...]}.
+   The `mat.levels` object array is converted to `mat.lv` tuples so the
+   published shape matches embedded CAT exactly (the renderers prefer lv
+   and fall back to levels, but we normalize for consistency). */
+function parsedItemsToCat(items) {
+  const out = {};
+  for (const item of (items || [])) {
+    if (!item || !item.section || !item.sku) continue;
+    const matsOut = {};
+    const mats = item.mats || {};
+    for (const matKey of Object.keys(mats)) {
+      const m = mats[matKey] || {};
+      const lv = Array.isArray(m.lv)
+        ? m.lv
+        : (Array.isArray(m.levels) ? m.levels.map(l => [l.level, l.price, l.desc]) : []);
+      matsOut[matKey] = {
+        p: m.p,
+        u: m.u,
+        l: Array.isArray(m.l) ? m.l : [],
+        s: m.s,
+        lv,
+        mp: m.minPak != null ? m.minPak : (m.mp || 0),
+        mu: m.minPakUom != null ? m.minPakUom : (m.mu || ""),
+      };
+    }
+    if (!out[item.section]) out[item.section] = [];
+    out[item.section].push([item.sku, item.desc || "", matsOut]);
+  }
+  return out;
+}
+
+/* Count overrides whose (section|sku) no longer exists in the effective
+   catalog. Used for the orphan-override notice. */
+function countOrphanOverrides(overrides, effectiveCat) {
+  if (!overrides || !effectiveCat) return 0;
+  // Build a Set of "section|sku" keys that exist in the effective catalog.
+  const present = new Set();
+  for (const secKey of Object.keys(effectiveCat)) {
+    for (const tuple of (effectiveCat[secKey] || [])) {
+      if (tuple && tuple[0]) present.add(secKey + "|" + tuple[0]);
+    }
+  }
+  let count = 0;
+  for (const k of Object.keys(overrides)) {
+    // override keys are "section|sku|material"
+    const parts = k.split("|");
+    if (parts.length < 2) continue;
+    const sig = parts[0] + "|" + parts[1];
+    if (!present.has(sig)) count++;
+  }
+  return count;
+}
+
 const SECTIONS = [
   {key:"mouldings",label:"Mouldings",cols:["solid_pine","primed_pine","mdf","poplar_solid","poplar_fj_primed","white_oak","red_oak","pvc","flex","fir","syp"],cn:["Solid Pine","Primed Pine","MDF","Poplar","Poplar FJ","White Oak","Red Oak","PVC","Flex","Fir","SYP"]},
   {key:"s4s_trimboards",label:"S4S Trimboards",cols:["solid_pine","mdf","poplar_fj_primed","ge_s4s","s4s_21","s4s_23","platinum_xl"],cn:["Solid Pine","MDF","Poplar FJ","GE S4S","21 S4S","23 S4S","Platinum XL"]},
@@ -1367,7 +1458,11 @@ function parseCSV(text) {
 }
 
 /* ─── PRODUCT ADMIN PANEL ─── */
-function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllPriceLevelsBtn, hiddenSkuSet, onVisibilityChange, productOverrides, setProductOverrides}) {
+function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllPriceLevelsBtn, hiddenSkuSet, onVisibilityChange, productOverrides, setProductOverrides, effectiveCat, publishedMeta, onPublish, onRevertPublished}) {
+  /* effectiveCat = publishedCatalog || CAT. Admin reads the live catalog
+     so the product table always reflects what the main pricing views see.
+     Fall back to the embedded constant if (somehow) not supplied. */
+  const liveCat = effectiveCat || CAT;
   const [csvData, setCsvData] = useState(null);
   const [parsedItems, setParsedItems] = useState(null);
   const [parseStats, setParseStats] = useState(null);
@@ -1463,13 +1558,13 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
   // Scan all SKUs in embedded data to find suffix patterns
   const allRawSkus = useMemo(() => {
     const skus = [];
-    SECTIONS.forEach(s => (CAT[s.key]||[]).forEach(([sku,,mats]) => {
+    SECTIONS.forEach(s => (liveCat[s.key]||[]).forEach(([sku,,mats]) => {
       // Collect full suffixed SKUs from all materials
       Object.values(mats).forEach(m => { if(m.s) skus.push(m.s.toUpperCase()); });
       skus.push(sku.toUpperCase());
     }));
     return skus;
-  }, []);
+  }, [liveCat]);
 
   useEffect(() => {
     if (!suffixScan) setSuffixScan(scanSuffixes(allRawSkus));
@@ -1482,11 +1577,11 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
   // Build from existing embedded data on mount
   const existingItems = useMemo(() => {
     const items = [];
-    SECTIONS.forEach(s => (CAT[s.key]||[]).forEach(([sku,desc,mats]) => {
+    SECTIONS.forEach(s => (liveCat[s.key]||[]).forEach(([sku,desc,mats]) => {
       items.push({sku, desc, section:s.key, mats, visible:true});
     }));
     return items;
-  }, []);
+  }, [liveCat]);
 
   useEffect(() => {
     if (!parsedItems) {
@@ -1554,8 +1649,105 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
 
   const secLabel = (key) => { const s = SECTIONS.find(s=>s.key===key); return s ? s.label : key; };
 
+  /* Orphan override count = field edits that reference (section|sku) pairs
+     no longer present in the current live catalog. Non-blocking notice. */
+  const orphanCount = useMemo(
+    () => countOrphanOverrides(productOverrides, liveCat),
+    [productOverrides, liveCat]
+  );
+
+  /* Publish is only meaningful when the admin is staging a fresh CSV
+     parse. Editing embedded data uses the per-field override system. */
+  const canPublish = parseStats?.source === 'csv' && parsedItems && parsedItems.length > 0;
+
+  /* Human-readable "published at" for the status badge. */
+  const publishedAtLabel = useMemo(() => {
+    if (!publishedMeta?.publishedAt) return null;
+    try {
+      const d = new Date(publishedMeta.publishedAt);
+      return d.toLocaleString();
+    } catch { return publishedMeta.publishedAt; }
+  }, [publishedMeta]);
+
+  const handlePublishClick = () => {
+    if (!canPublish) return;
+    const total = parsedItems.length;
+    const ok = window.confirm(
+      "Publish " + total + " products to the live catalog?\n\n" +
+      "The main pricing view will immediately show this data instead of the built-in catalog. " +
+      "You can revert at any time."
+    );
+    if (!ok) return;
+    const success = onPublish ? onPublish(parsedItems) : false;
+    if (success) {
+      alert("Published " + total + " products to the live catalog.");
+    } else {
+      alert("Publish failed. Check browser console for details.");
+    }
+  };
+
+  const handleRevertClick = () => {
+    const ok = window.confirm(
+      "Revert to the built-in catalog?\n\n" +
+      "The uploaded catalog will be removed and the main pricing view will show the built-in data again. " +
+      "Your field edits are preserved."
+    );
+    if (!ok) return;
+    if (onRevertPublished) onRevertPublished();
+  };
+
   return (
     <div style={{animation:"fadeIn 0.3s ease"}}>
+      {/* Live catalog status badge — always visible, shows what the main
+          pricing view is currently reading. */}
+      <div style={{
+        display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",
+        background: publishedMeta ? "linear-gradient(145deg, #000 0%, #0A1F0B 100%)" : "linear-gradient(145deg, #000 0%, #0C1F0E 100%)",
+        border: "1px solid " + (publishedMeta ? "rgba(76,175,80,0.35)" : "rgba(255,255,255,0.08)"),
+        borderRadius:10, padding:"12px 18px", marginBottom:16
+      }}>
+        <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
+          <span style={{
+            display:"inline-block",width:8,height:8,borderRadius:"50%",
+            background: publishedMeta ? "#4CAF50" : "rgba(197,165,90,0.7)",
+            boxShadow: publishedMeta ? "0 0 8px rgba(76,175,80,0.6)" : "none",
+            flexShrink:0
+          }}/>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:9,color:"rgba(255,255,255,0.45)",letterSpacing:1.2,textTransform:"uppercase",fontWeight:700,marginBottom:2}}>Live Catalog</div>
+            <div style={{fontSize:13,fontWeight:700,color:"#fff"}}>
+              {publishedMeta ? (
+                <>Uploaded catalog <span style={{color:"rgba(255,255,255,0.5)",fontWeight:500,fontSize:12}}> · {publishedMeta.total || 0} products · published {publishedAtLabel}</span></>
+              ) : (
+                <>Built-in catalog <span style={{color:"rgba(255,255,255,0.5)",fontWeight:500,fontSize:12}}> · embedded in the app</span></>
+              )}
+            </div>
+          </div>
+        </div>
+        {publishedMeta && (
+          <button onClick={handleRevertClick} style={{
+            padding:"8px 14px",borderRadius:6,border:"1px solid rgba(255,100,100,0.35)",
+            background:"rgba(255,100,100,0.08)",color:"#ff9a9a",fontSize:11,fontWeight:700,
+            cursor:"pointer",letterSpacing:0.5,whiteSpace:"nowrap"
+          }}>Revert to Built-in</button>
+        )}
+      </div>
+
+      {/* Orphan override notice — non-blocking, informational only. */}
+      {orphanCount > 0 && (
+        <div style={{
+          background:"linear-gradient(145deg, #1A1305 0%, #261B08 100%)",
+          border:"1px solid rgba(197,165,90,0.35)",
+          borderRadius:10,padding:"10px 16px",marginBottom:16,
+          display:"flex",alignItems:"center",gap:10
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={GOLD} strokeWidth="2" style={{flexShrink:0}}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",lineHeight:1.5}}>
+            <strong style={{color:GOLD}}>{orphanCount} field edit{orphanCount===1?"":"s"}</strong> reference SKUs not in the current live catalog. They're preserved and will re-apply if those SKUs return.
+          </div>
+        </div>
+      )}
+
       {/* Header stats */}
       <div style={{display:"flex",gap:16,marginBottom:24,flexWrap:"wrap"}}>
         <div style={{flex:"1 1 200px",background:"linear-gradient(145deg,#000,#0C1F0E)",borderRadius:10,padding:"16px 20px",border:"1px solid rgba(197,165,90,0.15)"}}>
@@ -1594,13 +1786,37 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
 
       {/* CSV Upload */}
       <div onDragOver={e=>{e.preventDefault();setDragOver(true)}} onDragLeave={()=>setDragOver(false)} onDrop={handleDrop}
-        style={{background:dragOver?"rgba(197,165,90,0.08)":"linear-gradient(145deg,#000,#0C1F0E)",borderRadius:10,padding:"24px",border:`2px dashed ${dragOver?"rgba(197,165,90,0.4)":"rgba(255,255,255,0.08)"}`,marginBottom:24,textAlign:"center",cursor:"pointer",transition:"all 0.2s"}}
+        style={{background:dragOver?"rgba(197,165,90,0.08)":"linear-gradient(145deg,#000,#0C1F0E)",borderRadius:10,padding:"24px",border:`2px dashed ${dragOver?"rgba(197,165,90,0.4)":"rgba(255,255,255,0.08)"}`,marginBottom:canPublish?12:24,textAlign:"center",cursor:"pointer",transition:"all 0.2s"}}
         onClick={()=>fileRef.current?.click()}>
         <input ref={fileRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])}/>
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={dragOver?GOLD:"rgba(255,255,255,0.2)"} strokeWidth="1.5" style={{marginBottom:8}}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         <div style={{fontSize:13,color:dragOver?GOLD:"rgba(255,255,255,0.4)",fontWeight:600}}>Drop product database csv or click to browse files</div>
         <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginTop:4}}>Columns: SKU, Description, Category, Sub-Category, Price, UOM</div>
       </div>
+
+      {/* Publish staging area — only shown when a freshly parsed CSV is
+          sitting in parsedItems waiting to be promoted to the live catalog. */}
+      {canPublish && (
+        <div style={{
+          background:"linear-gradient(145deg, #000 0%, #0C1F0E 100%)",
+          border:"1px solid rgba(197,165,90,0.25)",
+          borderRadius:10,padding:"14px 18px",marginBottom:24,
+          display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"
+        }}>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:9,color:GOLD,letterSpacing:1.2,textTransform:"uppercase",fontWeight:700,marginBottom:3}}>Staged Upload</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.7)",lineHeight:1.5}}>
+              <strong style={{color:"#fff"}}>{parsedItems.length} products</strong> parsed from CSV — preview only. Publish to make this the live catalog for everyone using the portal.
+            </div>
+          </div>
+          <button onClick={handlePublishClick} style={{
+            padding:"10px 20px",borderRadius:6,border:"1px solid #A8883A",
+            background:"linear-gradient(90deg, #A8883A 0%, #C5A55A 50%, #A8883A 100%)",
+            color:"#000",fontSize:12,fontWeight:800,cursor:"pointer",letterSpacing:0.8,
+            whiteSpace:"nowrap",textTransform:"uppercase"
+          }}>Publish to Live Catalog</button>
+        </div>
+      )}
 
       {/* Suffix Stripping Rules */}
       <div style={{marginBottom:24}}>
@@ -2094,9 +2310,10 @@ function SectionCard({ section, isActive, compact, onClick }) {
   );
 }
 
-function SectionVisualSelector({ sec, setSec, setS4sFilter }) {
+function SectionVisualSelector({ sec, setSec, setS4sFilter, effectiveCat }) {
+  const cat = effectiveCat || {};
   const visibleSections = SECTIONS.filter(s =>
-    (CAT[s.key] || []).length > 0 &&
+    (cat[s.key] || []).length > 0 &&
     !["plinth_rosettes", "blanks", "specialty"].includes(s.key)
   );
 
@@ -2268,6 +2485,42 @@ function App() {
     });
   }, []);
 
+  /* ─── PUBLISHED CATALOG (localStorage) ────────────────────────────────
+     When non-null, effectiveCat = publishedCatalog and the main pricing
+     views render uploaded data instead of the embedded CAT constant.
+     Field-edit overrides still apply on top (they survive re-publishes
+     per spec; orphaned ones get a non-blocking notice in Product Admin).
+     ─────────────────────────────────────────────────────────────────── */
+  const [publishedCatalog, setPublishedCatalog] = useState(() => loadPublishedCatalog());
+  const [publishedMeta, setPublishedMeta] = useState(() => loadPublishedMeta());
+
+  const effectiveCat = publishedCatalog || CAT;
+
+  const publishCatalog = useCallback((parsedItems) => {
+    if (!parsedItems || parsedItems.length === 0) return false;
+    const cat = parsedItemsToCat(parsedItems);
+    // Gather counts per section for the status badge / confirmation.
+    const counts = {};
+    let total = 0;
+    for (const k of Object.keys(cat)) {
+      counts[k] = cat[k].length;
+      total += cat[k].length;
+    }
+    const meta = { publishedAt: new Date().toISOString(), counts, total };
+    const ok = savePublishedCatalog(cat, meta);
+    if (ok) {
+      setPublishedCatalog(cat);
+      setPublishedMeta(meta);
+    }
+    return ok;
+  }, []);
+
+  const revertPublishedCatalog = useCallback(() => {
+    clearPublishedCatalog();
+    setPublishedCatalog(null);
+    setPublishedMeta(null);
+  }, []);
+
 
   const isAdmin = user?.role === "admin";
   const selling = sellingTier !== null;
@@ -2281,20 +2534,20 @@ function App() {
 
   const sObj = SECTIONS.find(s=>s.key===sec);
   const items = useMemo(() => {
-    const raw = CAT[sec] || [];
+    const raw = effectiveCat[sec] || [];
     if (!productOverrides || Object.keys(productOverrides).length === 0) return raw;
     return raw.map(t => applyOverridesToCatTuple(t, sec, productOverrides));
-  }, [sec, productOverrides]);
+  }, [sec, productOverrides, effectiveCat]);
   const allItems = useMemo(() => {
     const r = [];
-    SECTIONS.forEach(s => (CAT[s.key]||[]).forEach(tuple => {
+    SECTIONS.forEach(s => (effectiveCat[s.key]||[]).forEach(tuple => {
       const [sku, desc, mats] = productOverrides && Object.keys(productOverrides).length > 0
         ? applyOverridesToCatTuple(tuple, s.key, productOverrides)
         : tuple;
       if (!hiddenSkuSet.has(sku + '|' + s.key)) r.push({sku, desc, mats, section: s.label, secKey: s.key});
     }));
     return r;
-  }, [hiddenSkuSet, productOverrides]);
+  }, [hiddenSkuSet, productOverrides, effectiveCat]);
   const filtered = useMemo(() => {
     let f = items;
     // Filter out hidden products from admin
@@ -2476,6 +2729,7 @@ function App() {
             sec={sec}
             setSec={setSec}
             setS4sFilter={setS4sFilter}
+            effectiveCat={effectiveCat}
           />
         )}
         {/* Sticky markup indicator — shows when prices are adjusted from 1.00 */}
@@ -2492,7 +2746,7 @@ function App() {
 
       <div style={{maxWidth:1500,margin:"0 auto",padding:"108px 24px 20px"}}>
         {page === "admin" && <AdminPanel user={user} tiers={tiers} setTiers={setTiers} team={team} setTeam={setTeam}/>}
-        {page === "productadmin" && <ProductAdmin levelVis={levelVis} setLevelVis={setLevelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn} setShowAllPriceLevelsBtn={setShowAllPriceLevelsBtn} hiddenSkuSet={hiddenSkuSet} onVisibilityChange={(hidden) => setHiddenSkuSet(new Set(hidden))} productOverrides={productOverrides} setProductOverrides={updateProductOverrides}/>}
+        {page === "productadmin" && <ProductAdmin levelVis={levelVis} setLevelVis={setLevelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn} setShowAllPriceLevelsBtn={setShowAllPriceLevelsBtn} hiddenSkuSet={hiddenSkuSet} onVisibilityChange={(hidden) => setHiddenSkuSet(new Set(hidden))} productOverrides={productOverrides} setProductOverrides={updateProductOverrides} effectiveCat={effectiveCat} publishedMeta={publishedMeta} onPublish={publishCatalog} onRevertPublished={revertPublishedCatalog}/>}
 
         {page === "portal" && (<>
           {/* PRICING BAR — above lookup */}
@@ -2729,7 +2983,7 @@ function App() {
 
           <div style={{marginTop:16,padding:"12px 16px",background:"rgba(0,0,0,0.2)",borderRadius:8,border:"1px solid rgba(255,255,255,0.04)",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
             <span style={{fontSize:10,color:"rgba(255,255,255,0.6)",fontWeight:600}}><strong style={{color:"rgba(255,255,255,0.8)"}}>Garden State Lumber Products Corp.</strong> · Founded 1955 · Third Generation Family-Owned</span>
-            <span style={{fontSize:9,color:"rgba(255,255,255,0.55)",fontWeight:600,fontFamily:"'IBM Plex Mono',monospace"}}>NE: (800) 526-4708 · SE: (800) 296-0288 · {Object.values(CAT).reduce((a,b)=>a+b.length,0)} SKUs · Daily Import</span>
+            <span style={{fontSize:9,color:"rgba(255,255,255,0.55)",fontWeight:600,fontFamily:"'IBM Plex Mono',monospace"}}>NE: (800) 526-4708 · SE: (800) 296-0288 · {Object.values(effectiveCat).reduce((a,b)=>a+b.length,0)} SKUs · Daily Import</span>
           </div>
         </>)}
       </div>
