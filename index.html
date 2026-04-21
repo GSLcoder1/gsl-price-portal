@@ -1800,13 +1800,13 @@ function SectionCard({ section, isActive, compact, onClick }) {
         }}/>
       )}
 
-      {/* Active gold underline bar */}
+      {/* Active gold underline bar — solid edge-to-edge */}
       {isActive && (
         <div style={{
           position: "absolute",
           left: 0, right: 0, bottom: 0,
           height: 3,
-          background: "linear-gradient(90deg, rgba(168,136,58,0) 0%, #E8D48A 20%, #FFE9A8 50%, #E8D48A 80%, rgba(168,136,58,0) 100%)",
+          background: "linear-gradient(90deg, #A8883A 0%, #E8D48A 50%, #A8883A 100%)",
           boxShadow: "0 0 12px rgba(232,212,138,0.7), 0 0 4px rgba(232,212,138,0.9)",
           pointerEvents: "none",
         }}/>
@@ -2119,12 +2119,18 @@ function App() {
     return () => window.removeEventListener('resize', measure);
   });
   useEffect(()=>{
+    /* Reset floating header state immediately when section or page changes.
+       Prevents stale column positions from bleeding across when switching categories. */
+    setShowFloatingHeader(false);
+    setColPositions([]);
+    /* S4S Trimboards has its own custom layout — no floating species header. */
+    if (sec === "s4s_trimboards" || page !== "portal") return;
     const scrollContainer = tableRef.current?.querySelector('div[style*="overflow"]') || tableRef.current?.parentElement;
     const check = () => {
       if (!theadRef.current || !tableRef.current) return;
       const theadRect = theadRef.current.getBoundingClientRect();
       const tableRect = tableRef.current.getBoundingClientRect();
-      const shouldShow = theadRect.bottom < (activeMult !== 1 ? 186 : 150) && tableRect.bottom > 200;
+      const shouldShow = theadRect.bottom < (activeMult !== 1 ? 264 : 230) && tableRect.bottom > 260;
       setShowFloatingHeader(shouldShow);
       if (shouldShow) {
         const ths = theadRef.current.querySelectorAll('th');
@@ -2132,21 +2138,22 @@ function App() {
         const scrollEl = tableRef.current.querySelector('[style*="overflow"]');
         const scrollLeft = scrollEl ? scrollEl.scrollLeft : 0;
         const positions = [];
-        // Skip first 3 ths (expand, SKU, Description), collect substrate column positions
-        for (let i = 3; i < ths.length; i++) {
+        /* Include ALL columns (expand, SKU, Description, plus each substrate) so SKU+DESC stick with species. */
+        for (let i = 0; i < ths.length; i++) {
           const r = ths[i].getBoundingClientRect();
-          positions.push({ left: r.left - containerRect.left + scrollLeft, width: r.width });
+          positions.push({ left: r.left - containerRect.left + scrollLeft, width: r.width, label: ths[i].textContent || '' });
         }
         setColPositions(positions);
         setTableLeft(containerRect.left);
         setTableWidth(containerRect.width);
       }
     };
+    check();
     window.addEventListener('scroll', check, {passive:true});
     const scrollEl = tableRef.current?.querySelector('[style*="overflow"]');
     if (scrollEl) scrollEl.addEventListener('scroll', check, {passive:true});
     return () => { window.removeEventListener('scroll', check); if (scrollEl) scrollEl.removeEventListener('scroll', check); };
-  },[activeMult]);
+  },[activeMult, sec, page]);
 
   if (!user) return <LoginPage onLogin={setUser}/>;
 
@@ -2250,14 +2257,22 @@ function App() {
 
           {/* TABLE */}
           {/* Floating substrate bar — mirrors actual column positions */}
-          {showFloatingHeader && (()=>{
+          {showFloatingHeader && sec !== "s4s_trimboards" && (()=>{
             const markupBarH = activeMult !== 1 ? 34 : 0;
             return <>
             <div style={{position:"fixed",top:page==="portal"?218+markupBarH:50,left:0,right:0,zIndex:89,height:page==="portal"?72:62,background:"linear-gradient(180deg,rgba(0,0,0,1) 0%,rgba(0,0,0,0.98) 70%,rgba(0,0,0,0.95) 100%)",pointerEvents:"none"}}></div>
             <div style={{position:"fixed",top:page==="portal"?228+markupBarH:80,left:tableLeft,width:tableWidth,zIndex:90,background:"linear-gradient(180deg,rgba(0,0,0,0.98) 0%,rgba(0,0,0,0.95) 100%)",borderBottom:"2px solid rgba(197,165,90,0.25)",backdropFilter:"blur(12px)",height:50,overflow:"hidden",pointerEvents:"none"}}>
-              {orderedCols.map((c,i) => {
-                const pos = colPositions[i];
-                if (!pos) return null;
+              {colPositions.map((pos,i) => {
+                /* First 3 columns are expand/SKU/DESCRIPTION, render as plain gold header text.
+                   The rest are species — render as colored pill. */
+                if (i < 3) {
+                  const label = i === 0 ? "" : (i === 1 ? "SKU" : "DESCRIPTION");
+                  return <div key={"meta-"+i} style={{position:"absolute",left:pos.left,width:pos.width,top:0,height:"100%",display:"flex",alignItems:"center",justifyContent:i===0?"center":"flex-start",paddingLeft:i===0?0:14}}>
+                    <span style={{color:GOLD,fontWeight:800,fontSize:11,letterSpacing:1,textTransform:"uppercase"}}>{label}</span>
+                  </div>;
+                }
+                const c = orderedCols[i-3];
+                if (!c) return null;
                 const ms = getMS(c.col);
                 const words = c.name.split(' ');
                 return <div key={c.col} style={{position:"absolute",left:pos.left,width:pos.width,top:0,height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
