@@ -14,6 +14,171 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: rgba(197,165,90,0.2); border-radius: 3px; }
   ::-webkit-scrollbar-thumb:hover { background: rgba(197,165,90,0.4); }
+
+  /* ═══════════════ DIFF PREVIEW STYLING ═══════════════ */
+  /* Row-level classes applied in the staged-CSV preview table to mark
+     added / changed / removed SKUs. Colors match the summary banner dots. */
+  tr.diff-added td:first-child { box-shadow: inset 3px 0 0 #5ab872; }
+  tr.diff-added { background: linear-gradient(90deg, rgba(90,184,114,0.10) 0%, transparent 35%); }
+
+  tr.diff-changed td:first-child { box-shadow: inset 3px 0 0 #d4a32e; }
+  tr.diff-changed { background: linear-gradient(90deg, rgba(212,163,46,0.10) 0%, transparent 35%); }
+
+  tr.diff-removed td:first-child { box-shadow: inset 3px 0 0 #e85a5a; }
+  tr.diff-removed {
+    background: linear-gradient(90deg, rgba(232,90,90,0.10) 0%, transparent 35%);
+    opacity: 0.72;
+  }
+  /* Strike-through the *content* of removed rows, not the structural TDs, so
+     stickied cells and the row background stay clean. */
+  tr.diff-removed .diff-strikeable {
+    text-decoration: line-through;
+    text-decoration-color: rgba(232,90,90,0.55);
+    color: rgba(255,255,255,0.45);
+  }
+
+  /* Cell-level change: old value struck through in faint grey ABOVE the new
+     value highlighted in gold. Applied inline within a single <td>. */
+  .diff-cell {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-end;
+    line-height: 1.15;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: rgba(212,163,46,0.14);
+  }
+  .diff-cell.diff-cell-left { align-items: flex-start; }
+  .diff-cell .diff-old {
+    color: rgba(255,255,255,0.35);
+    text-decoration: line-through;
+    text-decoration-color: rgba(232,90,90,0.55);
+    font-size: 9px;
+  }
+  .diff-cell .diff-new {
+    color: #d4a32e;
+    font-weight: 700;
+  }
+
+  /* Section separator inside the staged preview, between active rows of a
+     section and the ghost (removed) rows below. */
+  tr.diff-section-sep td {
+    padding: 8px 12px !important;
+    background: linear-gradient(90deg, transparent, rgba(232,90,90,0.12), transparent);
+    border-top: 1px solid rgba(232,90,90,0.2);
+    border-bottom: 1px solid rgba(232,90,90,0.2);
+  }
+  .diff-section-sep-label {
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-weight: 800;
+    color: #e85a5a;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: 'Archivo', sans-serif;
+  }
+  .diff-section-sep-label::before,
+  .diff-section-sep-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(232,90,90,0.22);
+  }
+
+  /* Scare-dialog modal overlay for the 5%-removal guardrail. */
+  .diff-scare-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.72);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    animation: fadeIn 0.18s ease;
+    padding: 20px;
+  }
+  .diff-scare-dialog {
+    background: #0A0A0A;
+    border: 2px solid #e85a5a;
+    border-radius: 10px;
+    padding: 22px;
+    max-width: 520px;
+    width: 100%;
+    font-family: 'Archivo', sans-serif;
+    box-shadow: 0 20px 80px rgba(232,90,90,0.25), 0 0 0 1px rgba(232,90,90,0.15);
+  }
+  .diff-scare-title {
+    font-size: 11px;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: #e85a5a;
+    font-weight: 800;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .diff-scare-body {
+    font-size: 13px;
+    color: #fff;
+    line-height: 1.55;
+    margin-bottom: 14px;
+  }
+  .diff-scare-stats {
+    background: rgba(232,90,90,0.07);
+    border: 1px solid rgba(232,90,90,0.15);
+    padding: 12px 14px;
+    border-radius: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    margin-bottom: 16px;
+  }
+  .diff-scare-stats > div {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    color: rgba(255,255,255,0.75);
+  }
+  .diff-scare-stats > div strong { color: #fff; font-weight: 700; }
+  .diff-scare-reminder {
+    font-size: 11px;
+    color: rgba(255,255,255,0.55);
+    font-style: italic;
+    margin-bottom: 14px;
+    line-height: 1.5;
+  }
+  .diff-scare-buttons { display: flex; gap: 10px; }
+  .diff-scare-btn-cancel {
+    flex: 1;
+    padding: 11px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: transparent;
+    color: #fff;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 0.3px;
+  }
+  .diff-scare-btn-cancel:hover { background: rgba(255,255,255,0.04); }
+  .diff-scare-btn-confirm {
+    flex: 1;
+    padding: 11px;
+    border-radius: 6px;
+    border: none;
+    background: #e85a5a;
+    color: #fff;
+    font-weight: 800;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+  }
+  .diff-scare-btn-confirm:hover { background: #d94545; }
 </style>
 </head>
 <body>
@@ -299,6 +464,201 @@ function countOrphanOverrides(overrides, effectiveCat) {
     if (!present.has(sig)) count++;
   }
   return count;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   DIFF ENGINE
+   Compares a staged CSV (parsedItems) against the currently effective
+   catalog (publishedCatalog || CAT) and returns classified sets plus
+   cell-level change info for rendering cell-diffs inside changed rows.
+
+   Output shape:
+   {
+     byKey: Map<"section|sku", {status, item?, liveItem?, changes?}>,
+     added:     Array<parsedItem>,
+     changed:   Array<{item, liveItem, changes}>,
+     removed:   Array<{section, sku, desc, mats}>,    // synthesized from live
+     unchanged: Array<parsedItem>,
+     bySection: {
+       [sectionKey]: {added: n, changed: n, removed: n, unchanged: n, removedItems: [...]}
+     },
+     totals: {added, changed, removed, unchanged, liveCount, removalPct}
+   }
+
+   `changes` per item is an object describing which fields differ. Shape:
+   {
+     desc?: {from, to},
+     mats: {
+       [materialKey]: {
+         added?: boolean,        // material present in CSV but not in live
+         removed?: boolean,      // material present in live but not in CSV
+         p?: {from, to},         // base price
+         u?: {from, to},         // UOM
+         levels?: {from: Array<[lvl,price,desc]>, to: Array<[lvl,price,desc]>},
+         l?: {from, to},         // lengths array
+       }
+     }
+   }
+
+   Rationale: this engine only *classifies*; it doesn't assume any UI shape.
+   Rendering code consumes `changes` to draw cell-level diffs and consumes
+   `removed` to synthesize ghost rows in the staged preview.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Normalize a material map from either CSV-parser shape ({levels:[{level,price,desc}]}, minPak, minPakUom)
+   or CAT tuple shape ({lv:[[lvl,price,desc]]}, mp, mu) into a canonical form we can compare field-by-field. */
+function _normalizeMat(m) {
+  if (!m) return null;
+  const lv = Array.isArray(m.lv)
+    ? m.lv.map(a => [Number(a[0]), Number(a[1]), String(a[2] || "")])
+    : (Array.isArray(m.levels) ? m.levels.map(l => [Number(l.level), Number(l.price), String(l.desc || "")]) : []);
+  // Sort levels by level number so ordering differences don't register as changes.
+  lv.sort((a, b) => a[0] - b[0]);
+  const lengths = Array.isArray(m.l) ? [...m.l].sort() : [];
+  return {
+    p: m.p != null ? Number(m.p) : null,
+    u: m.u || "",
+    l: lengths,
+    s: m.s || "",
+    lv,
+    mp: m.minPak != null ? Number(m.minPak) : (m.mp != null ? Number(m.mp) : 0),
+    mu: m.minPakUom != null ? m.minPakUom : (m.mu || ""),
+  };
+}
+
+/* Deep-ish equal for normalized materials. */
+function _matsEqual(a, b) {
+  if (!a || !b) return a === b;
+  if (a.p !== b.p) return false;
+  if (a.u !== b.u) return false;
+  if (a.s !== b.s) return false;
+  if (a.mp !== b.mp) return false;
+  if (a.mu !== b.mu) return false;
+  if ((a.l || []).length !== (b.l || []).length) return false;
+  for (let i = 0; i < a.l.length; i++) if (a.l[i] !== b.l[i]) return false;
+  if ((a.lv || []).length !== (b.lv || []).length) return false;
+  for (let i = 0; i < a.lv.length; i++) {
+    const la = a.lv[i], lb = b.lv[i];
+    if (la[0] !== lb[0]) return false;
+    if (la[1] !== lb[1]) return false;
+    if (la[2] !== lb[2]) return false;
+  }
+  return true;
+}
+
+/* Compare two material maps and return per-material change details.
+   Returns null if the material sets are identical. */
+function _matsMapDiff(liveMats, csvMats) {
+  const out = {};
+  let any = false;
+  const allKeys = new Set([...Object.keys(liveMats || {}), ...Object.keys(csvMats || {})]);
+  for (const k of allKeys) {
+    const live = liveMats ? _normalizeMat(liveMats[k]) : null;
+    const csv = csvMats ? _normalizeMat(csvMats[k]) : null;
+    if (live && !csv) { out[k] = { removed: true, live }; any = true; continue; }
+    if (!live && csv) { out[k] = { added: true, csv }; any = true; continue; }
+    if (_matsEqual(live, csv)) continue;
+    const d = {};
+    if (live.p !== csv.p) d.p = { from: live.p, to: csv.p };
+    if (live.u !== csv.u) d.u = { from: live.u, to: csv.u };
+    // Lengths — compare as sorted arrays, report raw.
+    const la = live.l.join(","), lb = csv.l.join(",");
+    if (la !== lb) d.l = { from: live.l, to: csv.l };
+    // Level-by-level prices (bundled because users care about the set).
+    let lvlChanged = false;
+    if (live.lv.length !== csv.lv.length) lvlChanged = true;
+    else for (let i = 0; i < live.lv.length; i++) {
+      const a = live.lv[i], b = csv.lv[i];
+      if (a[0] !== b[0] || a[1] !== b[1] || a[2] !== b[2]) { lvlChanged = true; break; }
+    }
+    if (lvlChanged) d.levels = { from: live.lv, to: csv.lv };
+    if (live.mp !== csv.mp || live.mu !== csv.mu) d.mp = { from: {q: live.mp, u: live.mu}, to: {q: csv.mp, u: csv.mu} };
+    if (Object.keys(d).length > 0) {
+      out[k] = d;
+      any = true;
+    }
+  }
+  return any ? out : null;
+}
+
+function computeDiff(parsedItems, effectiveCat) {
+  const byKey = new Map();
+  const added = [];
+  const changed = [];
+  const removed = [];
+  const unchanged = [];
+  const bySection = {};
+
+  const ensureSec = (k) => {
+    if (!bySection[k]) bySection[k] = { added: 0, changed: 0, removed: 0, unchanged: 0, removedItems: [] };
+    return bySection[k];
+  };
+
+  // Build a lookup of the live catalog for O(1) comparisons.
+  const liveBySkuSec = new Map(); // "section|sku" → {section, sku, desc, mats}
+  let liveCount = 0;
+  for (const secKey of Object.keys(effectiveCat || {})) {
+    for (const tuple of (effectiveCat[secKey] || [])) {
+      if (!tuple) continue;
+      const [sku, desc, mats] = tuple;
+      liveBySkuSec.set(secKey + "|" + sku, { section: secKey, sku, desc: desc || "", mats: mats || {} });
+      liveCount++;
+    }
+  }
+
+  // Pass 1: walk the CSV. Each item is either added, changed, or unchanged.
+  const seenInCsv = new Set();
+  for (const item of (parsedItems || [])) {
+    if (!item || !item.section || !item.sku) continue;
+    const key = item.section + "|" + item.sku;
+    seenInCsv.add(key);
+    const live = liveBySkuSec.get(key);
+    const sec = ensureSec(item.section);
+
+    if (!live) {
+      byKey.set(key, { status: "added", item });
+      added.push(item);
+      sec.added++;
+      continue;
+    }
+    // Same SKU in both — diff desc + materials.
+    const liveDesc = (live.desc || "").trim();
+    const csvDesc = (item.desc || "").trim();
+    const descChanged = liveDesc !== csvDesc;
+    const matDiff = _matsMapDiff(live.mats, item.mats);
+    if (!descChanged && !matDiff) {
+      byKey.set(key, { status: "unchanged", item, liveItem: live });
+      unchanged.push(item);
+      sec.unchanged++;
+    } else {
+      const changes = { mats: matDiff || {} };
+      if (descChanged) changes.desc = { from: live.desc, to: item.desc };
+      byKey.set(key, { status: "changed", item, liveItem: live, changes });
+      changed.push({ item, liveItem: live, changes });
+      sec.changed++;
+    }
+  }
+
+  // Pass 2: anything in live that wasn't in CSV → removed.
+  for (const [key, live] of liveBySkuSec.entries()) {
+    if (seenInCsv.has(key)) continue;
+    byKey.set(key, { status: "removed", liveItem: live });
+    removed.push(live);
+    const sec = ensureSec(live.section);
+    sec.removed++;
+    sec.removedItems.push(live);
+  }
+
+  const totals = {
+    added: added.length,
+    changed: changed.length,
+    removed: removed.length,
+    unchanged: unchanged.length,
+    liveCount,
+    removalPct: liveCount > 0 ? (removed.length / liveCount) * 100 : 0,
+  };
+
+  return { byKey, added, changed, removed, unchanged, bySection, totals };
 }
 
 const SECTIONS = [
@@ -1480,6 +1840,15 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
      Null = nothing being edited. editDraft holds the in-flight field values. */
   const [editingKey, setEditingKey] = useState(null);
   const [editDraft, setEditDraft] = useState({});
+  /* ── DIFF-PREVIEW STATE ──────────────────────────────────────────────
+     Only meaningful when parseStats.source === 'csv'. `changesOnly`
+     defaults to true per spec: reviewer sees meaningful rows first,
+     flips to "Show all" when they want full context.
+     `scareDialog` holds the snapshot of totals when the 5% guardrail
+     triggers; null means no dialog. We render a real modal (not
+     window.confirm) so we can show the red header + breakdown. */
+  const [changesOnly, setChangesOnly] = useState(true);
+  const [scareDialog, setScareDialog] = useState(null);
   const fileRef = useRef(null);
 
   /* ─── OVERRIDE APPLICATION & EDITING HELPERS ─────────────────────────
@@ -1627,15 +1996,70 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
     });
   };
 
+  /* ═══════════ DIFF COMPUTATION ═══════════
+     Only runs when we're previewing a staged CSV. For the embedded or
+     already-published paths, `diff` is null and every downstream render
+     falls back to non-diff behavior.
+
+     We compute against `liveCat` — which is whatever the main pricing
+     views currently see (publishedCatalog || CAT). That's what the
+     reviewer needs: "what will actually change if I publish this". */
+  const isStagedCsv = parseStats?.source === 'csv';
+  const diff = useMemo(() => {
+    if (!isStagedCsv || !parsedItems) return null;
+    return computeDiff(parsedItems, liveCat);
+  }, [isStagedCsv, parsedItems, liveCat]);
+
+  /* Synthesize "ghost" rows for removals in the active section. These are
+     plain items that flow through the normal row renderer — they just carry
+     `_removed: true` so the renderer applies the red gutter + strike styling
+     and skips edit/visibility controls. The `_sep: true` item immediately
+     before them becomes the red section divider. */
+  const ghostRowsForSection = useMemo(() => {
+    if (!diff || !activeSec) return [];
+    const removed = diff.bySection[activeSec]?.removedItems || [];
+    return removed.map(r => ({
+      sku: r.sku, desc: r.desc, section: r.section, mats: r.mats,
+      visible: true, _removed: true,
+    }));
+  }, [diff, activeSec]);
+
   const secItems = useMemo(() => {
     if (!parsedItems || !activeSec) return [];
     let items = parsedItems.filter(i => i.section===activeSec);
-    if (search) {
+
+    // In diff mode with "Changes only", drop unchanged rows. Added/changed
+    // stay. Unchanged hide. Removed ghost rows are appended regardless.
+    if (diff && changesOnly) {
+      items = items.filter(i => {
+        const k = i.section + '|' + i.sku;
+        const entry = diff.byKey.get(k);
+        return entry && (entry.status === 'added' || entry.status === 'changed');
+      });
+    }
+
+    // Search applies to both active + ghost rows.
+    const searchFilter = (i) => {
+      if (!search) return true;
       const s = search.toLowerCase();
-      items = items.filter(i => i.sku.toLowerCase().includes(s) || i.desc.toLowerCase().includes(s));
+      return i.sku.toLowerCase().includes(s) || (i.desc || '').toLowerCase().includes(s);
+    };
+    items = items.filter(searchFilter);
+
+    const ghosts = ghostRowsForSection.filter(searchFilter);
+
+    // If there are ghost rows to show in this section, insert a separator
+    // marker between the active rows and the ghosts. The renderer looks
+    // for _sep and draws the red-bordered label row.
+    if (ghosts.length > 0) {
+      return [
+        ...items,
+        { _sep: true, sku: '__sep__' + activeSec, section: activeSec, count: ghosts.length },
+        ...ghosts,
+      ];
     }
     return items;
-  }, [parsedItems, activeSec, search]);
+  }, [parsedItems, activeSec, search, diff, changesOnly, ghostRowsForSection]);
 
   const secCounts = useMemo(() => {
     if (!parsedItems) return {};
@@ -1643,6 +2067,21 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
     parsedItems.forEach(i => { c[i.section] = (c[i.section]||0)+1; });
     return c;
   }, [parsedItems]);
+
+  /* Sections that should appear as tabs. Normally that's every section
+     with parsed items, but if the CSV removes every SKU in a section, we
+     still want its tab visible so the reviewer can see the removals —
+     otherwise the removals would be invisible in "Changes only" mode.
+     Union of (parsed sections) ∪ (sections with removed rows). */
+  const sectionsWithContent = useMemo(() => {
+    const keys = new Set(Object.keys(secCounts).filter(k => secCounts[k] > 0));
+    if (diff) {
+      for (const k of Object.keys(diff.bySection)) {
+        if ((diff.bySection[k].removed || 0) > 0) keys.add(k);
+      }
+    }
+    return keys;
+  }, [secCounts, diff]);
 
   const visibleCount = useMemo(() => parsedItems ? parsedItems.filter(i=>i.visible).length : 0, [parsedItems]);
   const hiddenCount = useMemo(() => parsedItems ? parsedItems.filter(i=>!i.visible).length : 0, [parsedItems]);
@@ -1669,21 +2108,52 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
     } catch { return publishedMeta.publishedAt; }
   }, [publishedMeta]);
 
+  /* Actual publish, pulled out so both the normal confirm path and the
+     scare-dialog "Publish anyway" button can call it. */
+  const doPublish = useCallback(() => {
+    const total = parsedItems.length;
+    const success = onPublish ? onPublish(parsedItems) : false;
+    setScareDialog(null);
+    if (success) {
+      alert("Published " + total + " products to the live catalog.");
+    } else {
+      alert("Publish failed. Check browser console for details.");
+    }
+  }, [onPublish, parsedItems]);
+
+  /* Guardrail: if the upload removes >5% of the live catalog we skip the
+     blunt window.confirm and open the scare dialog instead. That dialog
+     names the concrete count, shows before/after, and uses a red
+     "Publish anyway" button. One-row bug wiping 90% of the catalog hits
+     this hard; a discontinuation batch of a few dozen items sails through. */
+  const GUARDRAIL_PCT = 5;
+
   const handlePublishClick = () => {
     if (!canPublish) return;
     const total = parsedItems.length;
+    const pct = diff ? diff.totals.removalPct : 0;
+    const removedCount = diff ? diff.totals.removed : 0;
+
+    if (diff && pct > GUARDRAIL_PCT) {
+      setScareDialog({
+        total,
+        removedCount,
+        removedPct: pct,
+        addedCount: diff.totals.added,
+        changedCount: diff.totals.changed,
+        liveCount: diff.totals.liveCount,
+        afterCount: diff.totals.liveCount - diff.totals.removed + diff.totals.added,
+      });
+      return;
+    }
+
     const ok = window.confirm(
       "Publish " + total + " products to the live catalog?\n\n" +
       "The main pricing view will immediately show this data instead of the built-in catalog. " +
       "You can revert at any time."
     );
     if (!ok) return;
-    const success = onPublish ? onPublish(parsedItems) : false;
-    if (success) {
-      alert("Published " + total + " products to the live catalog.");
-    } else {
-      alert("Publish failed. Check browser console for details.");
-    }
+    doPublish();
   };
 
   const handleRevertClick = () => {
@@ -1998,12 +2468,102 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
                 : (publishedMeta ? "Previewing published catalog" : "Previewing built-in catalog")}
             </span>
           </div>
+
+          {/* ═══ DIFF SUMMARY BANNER ═══
+              Only when staging a CSV. Four chips with colored dots that
+              match the row-border colors. Always visible above the tabs
+              so the reviewer scales the mental model before diving in. */}
+          {diff && (
+            <div style={{
+              background:"linear-gradient(145deg, #000 0%, #0C1F0E 100%)",
+              border:"1px solid rgba(197,165,90,0.25)",
+              borderRadius:10, padding:"12px 16px", marginBottom:10,
+              display:"flex", alignItems:"center", gap:18, flexWrap:"wrap",
+            }}>
+              <span style={{
+                fontSize:9, letterSpacing:1.2, textTransform:"uppercase",
+                fontWeight:800, color:"rgba(255,255,255,0.55)"
+              }}>Diff vs. live</span>
+              {[
+                {label:"added",    n:diff.totals.added,    color:"#5ab872"},
+                {label:"changed",  n:diff.totals.changed,  color:"#d4a32e"},
+                {label:"removed",  n:diff.totals.removed,  color:"#e85a5a"},
+                {label:"unchanged",n:diff.totals.unchanged,color:"rgba(255,255,255,0.35)"},
+              ].map(chip => (
+                <span key={chip.label} style={{display:"inline-flex",alignItems:"center",gap:6,fontFamily:"'IBM Plex Mono',monospace",fontSize:11,fontWeight:600}}>
+                  <span style={{width:8,height:8,borderRadius:"50%",background:chip.color}}/>
+                  <span style={{color:"#fff",fontWeight:700}}>{chip.n.toLocaleString()}</span>
+                  <span style={{color:"rgba(255,255,255,0.55)",fontSize:10}}>{chip.label}</span>
+                </span>
+              ))}
+              {/* Nudge toward the guardrail threshold when close */}
+              {diff.totals.removalPct > GUARDRAIL_PCT && (
+                <span style={{
+                  marginLeft:"auto",fontSize:10,fontWeight:700,letterSpacing:0.5,
+                  color:"#e85a5a",padding:"3px 8px",borderRadius:4,
+                  background:"rgba(232,90,90,0.12)",border:"1px solid rgba(232,90,90,0.3)"
+                }}>
+                  ⚠ {diff.totals.removalPct.toFixed(1)}% of catalog would be removed
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* ═══ CHANGES-ONLY FILTER TOGGLE ═══
+              Sits above the section tabs. Defaults to "Changes only" so
+              the reviewer sees meaningful rows without scrolling; flipping
+              to "Show all" restores full context. Only shown in diff mode. */}
+          {diff && (
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+              {[
+                {key:true,  label:"Changes only"},
+                {key:false, label:"Show all"},
+              ].map(opt => {
+                const active = changesOnly === opt.key;
+                return (
+                  <button key={String(opt.key)} onClick={()=>setChangesOnly(opt.key)} style={{
+                    padding:"6px 14px", borderRadius:6,
+                    border:"1px solid " + (active ? "#A8883A" : "rgba(197,165,90,0.25)"),
+                    background: active
+                      ? "linear-gradient(90deg, #A8883A, #C5A55A, #A8883A)"
+                      : "transparent",
+                    color: active ? "#000" : GOLD,
+                    fontSize:10, fontWeight:800, letterSpacing:0.7,
+                    cursor:"pointer", fontFamily:"'Archivo',sans-serif",
+                    textTransform:"uppercase",
+                  }}>{opt.label}</button>
+                );
+              })}
+              <span style={{marginLeft:6,fontSize:10,color:"rgba(255,255,255,0.35)",fontWeight:600}}>
+                {changesOnly
+                  ? "Hiding " + diff.totals.unchanged.toLocaleString() + " unchanged rows"
+                  : "Showing all rows"}
+              </span>
+            </div>
+          )}
+
           <div style={{display:"flex",gap:4,marginBottom:16,overflowX:"auto",background:"#000",borderRadius:10,padding:"10px 8px",boxShadow:"0 4px 16px rgba(0,0,0,0.6), 0 2px 6px rgba(0,0,0,0.4)",border:"1px solid rgba(197,165,90,0.15)"}}>
-            {SECTIONS.filter(s=>secCounts[s.key]>0).map(s => {const isActive=activeSec===s.key;return(
-              <button key={s.key} onClick={()=>{setActiveSec(s.key);setSearch('');}} style={{padding:"10px 18px",borderRadius:6,border:"none",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"'Archivo',sans-serif",background:isActive?"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)":"transparent",backgroundSize:isActive?"200% 100%":"auto",animation:isActive?"tabShine 7s ease-in-out infinite":"none",color:isActive?G:"rgba(255,255,255,0.35)",transition:"all 0.2s",letterSpacing:0.5}}>
-                {s.label} <span style={{fontSize:11,color:isActive?"rgba(12,31,14,0.6)":"rgba(255,255,255,0.2)",fontFamily:"'IBM Plex Mono',monospace",marginLeft:4}}>({secCounts[s.key]||0})</span>
-              </button>
-            );})}
+            {SECTIONS.filter(s=>sectionsWithContent.has(s.key)).map(s => {
+              const isActive=activeSec===s.key;
+              const d = diff ? diff.bySection[s.key] : null;
+              return (
+                <button key={s.key} onClick={()=>{setActiveSec(s.key);setSearch('');}} style={{padding:"10px 18px",borderRadius:6,border:"none",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"'Archivo',sans-serif",background:isActive?"linear-gradient(90deg, #A8883A 0%, #C5A55A 25%, #E8D48A 50%, #C5A55A 75%, #A8883A 100%)":"transparent",backgroundSize:isActive?"200% 100%":"auto",animation:isActive?"tabShine 7s ease-in-out infinite":"none",color:isActive?G:"rgba(255,255,255,0.35)",transition:"all 0.2s",letterSpacing:0.5,display:"inline-flex",alignItems:"center",gap:6}}>
+                  {s.label} <span style={{fontSize:11,color:isActive?"rgba(12,31,14,0.6)":"rgba(255,255,255,0.2)",fontFamily:"'IBM Plex Mono',monospace"}}>({secCounts[s.key]||0})</span>
+                  {/* Per-section diff pills: +N added, ~N changed, −N removed.
+                      Only render pills with nonzero counts; otherwise the tab
+                      gets cluttered on sections with no changes. */}
+                  {d && d.added > 0 && (
+                    <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:3,background:"rgba(90,184,114,0.16)",color:"#5ab872",border:isActive?"1px solid rgba(90,184,114,0.35)":"none"}}>+{d.added}</span>
+                  )}
+                  {d && d.changed > 0 && (
+                    <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:3,background:"rgba(212,163,46,0.16)",color:"#d4a32e",border:isActive?"1px solid rgba(212,163,46,0.35)":"none"}}>~{d.changed}</span>
+                  )}
+                  {d && d.removed > 0 && (
+                    <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:9,fontWeight:800,padding:"1px 5px",borderRadius:3,background:"rgba(232,90,90,0.16)",color:"#e85a5a",border:isActive?"1px solid rgba(232,90,90,0.35)":"none"}}>−{d.removed}</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </>
       )}
@@ -2051,9 +2611,42 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
               </thead>
               <tbody>
                 {secItems.map((item,idx) => {
+                  /* ── DIFF ROW INTERCEPTS ──
+                     Handle the synthetic separator + ghost (removed) rows
+                     before the normal render path. Regular added/changed
+                     rows fall through to the standard rendering below. */
+                  if (item._sep) {
+                    return (
+                      <tr key={item.sku} className="diff-section-sep">
+                        <td colSpan={17}>
+                          <div className="diff-section-sep-label">
+                            Removed from {secLabel(item.section)} · {item.count} {item.count===1?"item":"items"}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  // Diff lookup. In diff mode this tells us which status the
+                  // row has (added / changed / unchanged / removed ghost) and
+                  // — for 'changed' — the per-material cell diffs.
+                  const diffEntry = diff ? diff.byKey.get(item.section + '|' + item.sku) : null;
+                  const isGhost = item._removed === true;
+                  const rowStatus = isGhost ? 'removed' : (diffEntry?.status || null);
+                  const rowClass = 'rh'
+                    + (rowStatus === 'added'   ? ' diff-added'   : '')
+                    + (rowStatus === 'changed' ? ' diff-changed' : '')
+                    + (rowStatus === 'removed' ? ' diff-removed' : '');
+
                   // Apply overrides (substrate re-bucketing, desc, s, u, l) before rendering.
                   const displayItem = getDisplayItem(item);
                   const matEntries = Object.entries(displayItem.mats);
+
+                  /* Per-material change map for this row. Only populated for
+                     'changed' rows. Keyed by ORIGINAL material key (matches
+                     the live side). Shape: { [matKey]: {p, u, l, levels, mp, added, removed} }. */
+                  const matDiffs = (rowStatus === 'changed' && diffEntry?.changes?.mats) || {};
+                  const descDiff = (rowStatus === 'changed' && diffEntry?.changes?.desc) || null;
                   return matEntries.map(([mat,info],mi) => {
                     const ms = getMS(mat);
                     const isFirst = mi === 0;
@@ -2064,6 +2657,13 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
                     rawLevels.forEach(lv => { levelMap[lv.level] = lv; });
                     const mpak = info.minPak || info.mp || 0;
                     const mpakUom = info.minPakUom || info.mu || '';
+
+                    /* Match the rendered material row back to its diff entry.
+                       The diff is keyed by the ORIGINAL material key in the
+                       CSV item, which may have been re-bucketed by overrides.
+                       We reuse the same origMatKey resolution the edit
+                       machinery uses, so the cell-diff overlays stay aligned
+                       with the row the user is actually editing. */
                     // ── Edit state: match against the ORIGINAL material key, not
                     //    the (possibly re-bucketed) display key, so the pencil
                     //    button survives substrate changes.
@@ -2127,36 +2727,114 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
                     }
 
                     return (
-                      <tr key={item.sku+mat} className="rh" style={{borderBottom:mi===matEntries.length-1?"2px solid rgba(255,255,255,0.06)":"1px solid rgba(255,255,255,0.02)",opacity:item.visible?1:0.4}}>
+                      <tr key={item.sku+mat} className={rowClass} style={{borderBottom:mi===matEntries.length-1?"2px solid rgba(255,255,255,0.06)":"1px solid rgba(255,255,255,0.02)",opacity:item.visible?1:0.4}}>
                         {isFirst && <td rowSpan={matEntries.length} style={{padding:"6px 8px",textAlign:"center",verticalAlign:"middle",borderRight:"1px solid rgba(255,255,255,0.04)",position:"sticky",left:0,background:idx%2===0?"#0D0D0D":"#0F0F0F",zIndex:2}}>
-                          <button onClick={()=>toggleVisibility(item.sku,item.section)} style={{width:22,height:22,borderRadius:4,border:"none",cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto",background:item.visible?"rgba(76,175,80,0.15)":"rgba(255,100,100,0.1)",color:item.visible?"#4CAF50":"#ff6b6b"}}>{item.visible?"✓":"✕"}</button>
+                          {/* Ghost rows have no toggle — they're being removed anyway. Show a "Will remove" tag instead. */}
+                          {isGhost ? (
+                            <span title="Will be removed on publish" style={{display:"inline-block",padding:"2px 5px",borderRadius:3,background:"rgba(232,90,90,0.16)",color:"#e85a5a",border:"1px solid rgba(232,90,90,0.3)",fontSize:7,fontWeight:800,letterSpacing:0.6,textTransform:"uppercase",whiteSpace:"nowrap"}}>Remove</span>
+                          ) : (
+                            <button onClick={()=>toggleVisibility(item.sku,item.section)} style={{width:22,height:22,borderRadius:4,border:"none",cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto",background:item.visible?"rgba(76,175,80,0.15)":"rgba(255,100,100,0.1)",color:item.visible?"#4CAF50":"#ff6b6b"}}>{item.visible?"✓":"✕"}</button>
+                          )}
                         </td>}
-                        {isFirst && <td rowSpan={matEntries.length} style={{padding:"6px 8px",fontFamily:"'IBM Plex Mono',monospace",fontWeight:700,color:"#fff",fontSize:10,verticalAlign:"middle",borderRight:"1px solid rgba(255,255,255,0.04)",position:"sticky",left:45,background:idx%2===0?"#0D0D0D":"#0F0F0F",zIndex:2}}>{item.sku}</td>}
+                        {isFirst && <td rowSpan={matEntries.length} style={{padding:"6px 8px",fontFamily:"'IBM Plex Mono',monospace",fontWeight:700,color:"#fff",fontSize:10,verticalAlign:"middle",borderRight:"1px solid rgba(255,255,255,0.04)",position:"sticky",left:45,background:idx%2===0?"#0D0D0D":"#0F0F0F",zIndex:2}}>
+                          <span className={isGhost?"diff-strikeable":undefined}>{item.sku}</span>
+                          {/* Status tag next to the SKU — "Added" / "Changed" on active rows,
+                              "Will remove" on ghost rows. Gives the reviewer a named handle
+                              on what they're looking at even before the colors register. */}
+                          {rowStatus === 'added'   && <span style={{marginLeft:6,display:"inline-block",padding:"1px 5px",borderRadius:3,background:"rgba(90,184,114,0.16)",color:"#5ab872",border:"1px solid rgba(90,184,114,0.3)",fontSize:7,fontWeight:800,letterSpacing:0.6,textTransform:"uppercase"}}>Added</span>}
+                          {rowStatus === 'changed' && <span style={{marginLeft:6,display:"inline-block",padding:"1px 5px",borderRadius:3,background:"rgba(212,163,46,0.16)",color:"#d4a32e",border:"1px solid rgba(212,163,46,0.3)",fontSize:7,fontWeight:800,letterSpacing:0.6,textTransform:"uppercase"}}>Changed</span>}
+                        </td>}
                         {isFirst && <td rowSpan={matEntries.length} style={{padding:"6px 8px",color:"rgba(255,255,255,0.65)",verticalAlign:"middle",fontSize:10,borderRight:"1px solid rgba(255,255,255,0.04)"}}>
-                          {displayItem.desc}
+                          {/* Description: show cell-level diff if it changed. */}
+                          {descDiff ? (
+                            <span className="diff-cell diff-cell-left">
+                              <span className="diff-old">{descDiff.from}</span>
+                              <span className="diff-new">{descDiff.to}</span>
+                            </span>
+                          ) : (
+                            <span className={isGhost?"diff-strikeable":undefined}>{displayItem.desc}</span>
+                          )}
                           {displayItem.desc !== item.desc && <span title="Overridden" style={{marginLeft:6,display:"inline-block",width:5,height:5,borderRadius:"50%",background:GOLD,verticalAlign:"middle"}}/>}
                         </td>}
                         <td style={{padding:"4px 6px",verticalAlign:"middle"}}>
-                          <span style={{display:"inline-block",padding:"2px 5px",borderRadius:3,background:ms.bg,color:ms.color,fontSize:8,fontWeight:700,border:`1px solid ${ms.border}`,minWidth:50,textAlign:"center"}}>{ms.label}</span>
+                          <span className={isGhost?"diff-strikeable":undefined} style={{display:"inline-block",padding:"2px 5px",borderRadius:3,background:ms.bg,color:ms.color,fontSize:8,fontWeight:700,border:`1px solid ${ms.border}`,minWidth:50,textAlign:"center"}}>{ms.label}</span>
                           {isOverridden && overrides[overrideKey(item.section,item.sku,origMatKey)]?.substrate && <span title="Substrate overridden" style={{marginLeft:4,color:GOLD,fontSize:9}}>●</span>}
+                          {/* Material added in CSV but not in live: flag it. */}
+                          {matDiffs[origMatKey]?.added && <span title="New material" style={{marginLeft:4,color:"#5ab872",fontSize:9}}>+</span>}
                         </td>
-                        <td style={{padding:"4px 6px",fontFamily:"'IBM Plex Mono',monospace",fontSize:9,fontWeight:600,color:"rgba(255,255,255,0.6)",verticalAlign:"middle"}}>{info.s}</td>
-                        <td style={{padding:"4px 4px",textAlign:"center",fontFamily:"'IBM Plex Mono',monospace",fontSize:8,fontWeight:600,color:info.u==="LF"?GOLD:"#b088ff",verticalAlign:"middle"}}>/{info.u}</td>
+                        <td style={{padding:"4px 6px",fontFamily:"'IBM Plex Mono',monospace",fontSize:9,fontWeight:600,color:"rgba(255,255,255,0.6)",verticalAlign:"middle"}}>
+                          <span className={isGhost?"diff-strikeable":undefined}>{info.s}</span>
+                        </td>
+                        <td style={{padding:"4px 4px",textAlign:"center",fontFamily:"'IBM Plex Mono',monospace",fontSize:8,fontWeight:600,color:info.u==="LF"?GOLD:"#b088ff",verticalAlign:"middle"}}>
+                          {/* UOM cell-level diff if it changed. */}
+                          {matDiffs[origMatKey]?.u ? (
+                            <span className="diff-cell">
+                              <span className="diff-old">/{matDiffs[origMatKey].u.from}</span>
+                              <span className="diff-new">/{matDiffs[origMatKey].u.to}</span>
+                            </span>
+                          ) : (
+                            <span className={isGhost?"diff-strikeable":undefined}>/{info.u}</span>
+                          )}
+                        </td>
                         {[1,2,3,4,5,6,7,8,9,10].map(n => {
                           const lv = levelMap[n];
                           if (!lv) return <td key={n} style={{padding:"4px 4px",textAlign:"center",fontSize:9,borderLeft:"1px solid rgba(255,255,255,0.03)",verticalAlign:"middle"}}></td>;
+                          // Per-level diff lookup. Rebuild a price map from the levels.from array
+                          // so we can decide per-level whether this specific cell changed.
+                          // (The diff engine bundles the whole level set as one change; we
+                          // unpack it here so only cells that moved get the gold highlight.)
+                          let priceFrom = null;
+                          if (matDiffs[origMatKey]?.levels) {
+                            const fromLvl = matDiffs[origMatKey].levels.from.find(x => x[0] === n);
+                            if (fromLvl && fromLvl[1] !== lv.price) priceFrom = fromLvl[1];
+                          }
+                          // Base-price changes can also show up on `p`; L1 needs to pick that up
+                          // even if the level set itself didn't change.
+                          if (n === 1 && priceFrom == null && matDiffs[origMatKey]?.p && matDiffs[origMatKey].p.from !== matDiffs[origMatKey].p.to) {
+                            priceFrom = matDiffs[origMatKey].p.from;
+                          }
+                          const priceLabel = lv.price===0 ? "Call" : `$${lv.price.toFixed(2)}`;
+                          const priceFromLabel = priceFrom == null ? null : (priceFrom === 0 ? "Call" : `$${Number(priceFrom).toFixed(2)}`);
                           return (
                             <td key={n} style={{padding:"4px 4px",textAlign:"center",verticalAlign:"middle",borderLeft:"1px solid rgba(255,255,255,0.03)",background:n===1?"rgba(76,175,80,0.03)":"transparent"}}>
-                              <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:10,fontWeight:700,color:lv.price===0?"#b088ff":n===1?(info.u==="LF"?GOLD:"#b088ff"):"rgba(255,255,255,0.55)",lineHeight:1.2}}>{lv.price===0?"Call":`$${lv.price.toFixed(2)}`}</div>
+                              {priceFromLabel != null ? (
+                                <span className="diff-cell">
+                                  <span className="diff-old">{priceFromLabel}</span>
+                                  <span className="diff-new">{priceLabel}</span>
+                                </span>
+                              ) : (
+                                <div className={isGhost?"diff-strikeable":undefined} style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:10,fontWeight:700,color:lv.price===0?"#b088ff":n===1?(info.u==="LF"?GOLD:"#b088ff"):"rgba(255,255,255,0.55)",lineHeight:1.2}}>{priceLabel}</div>
+                              )}
                               <div style={{fontSize:7,color:"rgba(255,255,255,0.2)",lineHeight:1.2,marginTop:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:70}} title={lv.desc}>{n===1?"BASE":lv.desc.replace(/ PRICE$/i,'')}</div>
                             </td>
                           );
                         })}
-                        <td style={{padding:"4px 6px",textAlign:"center",fontFamily:"'IBM Plex Mono',monospace",fontSize:9,color:"rgba(255,255,255,0.6)",verticalAlign:"middle"}}>{mpak>0?`${mpak}`:""}</td>
-                        <td style={{padding:"4px 6px",fontFamily:"'IBM Plex Mono',monospace",fontSize:9,color:"rgba(255,255,255,0.55)",verticalAlign:"middle"}}>{lengths}</td>
+                        <td style={{padding:"4px 6px",textAlign:"center",fontFamily:"'IBM Plex Mono',monospace",fontSize:9,color:"rgba(255,255,255,0.6)",verticalAlign:"middle"}}>
+                          {/* Min-pak quantity cell-level diff (q+u bundled). */}
+                          {matDiffs[origMatKey]?.mp ? (
+                            <span className="diff-cell">
+                              <span className="diff-old">{matDiffs[origMatKey].mp.from.q > 0 ? matDiffs[origMatKey].mp.from.q : ""}</span>
+                              <span className="diff-new">{matDiffs[origMatKey].mp.to.q > 0 ? matDiffs[origMatKey].mp.to.q : ""}</span>
+                            </span>
+                          ) : (
+                            <span className={isGhost?"diff-strikeable":undefined}>{mpak>0?`${mpak}`:""}</span>
+                          )}
+                        </td>
+                        <td style={{padding:"4px 6px",fontFamily:"'IBM Plex Mono',monospace",fontSize:9,color:"rgba(255,255,255,0.55)",verticalAlign:"middle"}}>
+                          {/* Lengths cell-level diff. */}
+                          {matDiffs[origMatKey]?.l ? (
+                            <span className="diff-cell diff-cell-left">
+                              <span className="diff-old">{fmtLengths(matDiffs[origMatKey].l.from) || 'R/L'}</span>
+                              <span className="diff-new">{fmtLengths(matDiffs[origMatKey].l.to) || 'R/L'}</span>
+                            </span>
+                          ) : (
+                            <span className={isGhost?"diff-strikeable":undefined}>{lengths}</span>
+                          )}
+                        </td>
                         <td style={{padding:"4px 4px",textAlign:"center",verticalAlign:"middle",whiteSpace:"nowrap"}}>
-                          <button onClick={()=>startEdit(item,origMatKey)} title="Edit row" style={{width:22,height:22,borderRadius:4,border:isOverridden?"1px solid rgba(197,165,90,0.4)":"1px solid rgba(255,255,255,0.08)",background:isOverridden?"rgba(197,165,90,0.12)":"transparent",color:isOverridden?GOLD:"rgba(255,255,255,0.4)",fontSize:10,cursor:"pointer",padding:0}}>✎</button>
-                          {isOverridden && <button onClick={()=>clearOverride(item.section,item.sku,origMatKey)} title="Reset to original" style={{width:18,height:18,marginLeft:2,borderRadius:4,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.3)",fontSize:9,cursor:"pointer",padding:0}}>↺</button>}
+                          {/* Ghost rows have no edit/reset — they're going away. */}
+                          {!isGhost && <button onClick={()=>startEdit(item,origMatKey)} title="Edit row" style={{width:22,height:22,borderRadius:4,border:isOverridden?"1px solid rgba(197,165,90,0.4)":"1px solid rgba(255,255,255,0.08)",background:isOverridden?"rgba(197,165,90,0.12)":"transparent",color:isOverridden?GOLD:"rgba(255,255,255,0.4)",fontSize:10,cursor:"pointer",padding:0}}>✎</button>}
+                          {!isGhost && isOverridden && <button onClick={()=>clearOverride(item.section,item.sku,origMatKey)} title="Reset to original" style={{width:18,height:18,marginLeft:2,borderRadius:4,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.3)",fontSize:9,cursor:"pointer",padding:0}}>↺</button>}
                         </td>
                       </tr>
                     );
@@ -2191,6 +2869,36 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
           7. UOM preserved as source of truth: LF, PC, EA, BOX, PAK, PR
         </div>
       </div>
+
+      {/* ═══ 5% REMOVAL GUARDRAIL — SCARE DIALOG ═══
+          Rendered as a real modal (not window.confirm) so we can show the
+          red header, before/after counts, a breakdown, and reframe the
+          confirm button as a red "Publish anyway". Triggered only when
+          removed / live-count > 5%. Normal publishes keep the old flow. */}
+      {scareDialog && (
+        <div className="diff-scare-overlay" onClick={()=>setScareDialog(null)}>
+          <div className="diff-scare-dialog" onClick={e=>e.stopPropagation()}>
+            <div className="diff-scare-title">⚠ Unusual change detected</div>
+            <div className="diff-scare-body">
+              This upload will <strong>remove {scareDialog.removedCount.toLocaleString()} product{scareDialog.removedCount===1?"":"s"}</strong> from the live catalog (<strong>{scareDialog.removedPct.toFixed(1)}%</strong>). That's well above the {GUARDRAIL_PCT}% daily-update threshold.
+            </div>
+            <div className="diff-scare-stats">
+              <div><span>Live catalog now</span><strong>{scareDialog.liveCount.toLocaleString()} products</strong></div>
+              <div><span>After publish</span><strong>{scareDialog.afterCount.toLocaleString()} products</strong></div>
+              <div><span>Added</span><strong style={{color:"#5ab872"}}>+{scareDialog.addedCount.toLocaleString()}</strong></div>
+              <div><span>Removed</span><strong style={{color:"#e85a5a"}}>−{scareDialog.removedCount.toLocaleString()}</strong></div>
+              <div><span>Changed</span><strong style={{color:"#d4a32e"}}>~{scareDialog.changedCount.toLocaleString()}</strong></div>
+            </div>
+            <div className="diff-scare-reminder">
+              Double-check the CSV is complete before publishing. A truncated export or upstream pipeline hiccup can silently drop products.
+            </div>
+            <div className="diff-scare-buttons">
+              <button className="diff-scare-btn-cancel" onClick={()=>setScareDialog(null)}>Cancel</button>
+              <button className="diff-scare-btn-confirm" onClick={doPublish}>Publish anyway</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
