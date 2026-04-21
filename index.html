@@ -78,18 +78,28 @@ async function deleteTier(id) {
 /** Load a setting by key */
 async function loadSetting(key) {
   const d = await sbGet("app_settings", "select=value&key=eq." + encodeURIComponent(key));
-  return d && d.length > 0 ? d[0].value : null;
+  const val = d && d.length > 0 ? d[0].value : null;
+  console.log("[loadSetting]", key, "→", val === null ? "(not found)" : val);
+  return val;
 }
-/** Save a setting (upsert by key) */
+/** Save a setting (upsert by key).
+ *  PostgREST upsert requires BOTH the on_conflict query param AND the
+ *  merge-duplicates Prefer header; without on_conflict the POST tries a
+ *  plain INSERT and silently fails on unique-constraint collisions. */
 async function saveSetting(key, value) {
   try {
-    const r = await fetch(SUPABASE_URL + "/rest/v1/app_settings", {
+    const r = await fetch(SUPABASE_URL + "/rest/v1/app_settings?on_conflict=key", {
       method: "POST",
       headers: { ...SB_HDR, "Prefer": "resolution=merge-duplicates,return=representation" },
       body: JSON.stringify({ key, value, updated_at: new Date().toISOString() })
     });
-    return r.ok;
-  } catch(e) { console.error("saveSetting", key, e); return false; }
+    if (!r.ok) {
+      console.error("[saveSetting] FAIL", key, r.status, await r.text());
+      return false;
+    }
+    console.log("[saveSetting] OK", key, value);
+    return true;
+  } catch(e) { console.error("[saveSetting] EXCEPTION", key, e); return false; }
 }
 
 
@@ -1696,7 +1706,7 @@ function App() {
   const [hiddenSkuSet, setHiddenSkuSet] = useState(new Set());
   useEffect(() => {
     loadSetting('hidden_skus').then(hidden => {
-      if (hidden && hidden.length > 0) setHiddenSkuSet(new Set(hidden));
+      if (Array.isArray(hidden)) setHiddenSkuSet(new Set(hidden));
     });
   }, []);
 
@@ -1739,31 +1749,40 @@ function App() {
   /* ─── LEVEL VISIBILITY: loaded from Supabase app_settings ───────────
      Stored as a single JSON blob under key "level_visibility".
      Falls back to localStorage if Supabase is unreachable.
+     CRITICAL: the `levelVisLoaded` flag prevents the save-effect from
+     firing on initial mount with the empty default state — otherwise
+     it would clobber the saved value before the load resolves.
      ───────────────────────────────────────────────────────────────────── */
   const [levelVis, setLevelVis] = useState({global:{},categories:{}});
+  const [levelVisLoaded, setLevelVisLoaded] = useState(false);
   useEffect(() => {
     loadSetting('level_visibility').then(val => {
       if (val) setLevelVis(val);
       else { try { const s = localStorage.getItem('gsl_level_vis'); if (s) setLevelVis(JSON.parse(s)); } catch {} }
+      setLevelVisLoaded(true);
     });
   }, []);
   useEffect(() => {
+    if (!levelVisLoaded) return; // don't save until initial load completes
     saveSetting('level_visibility', levelVis);
     try { localStorage.setItem('gsl_level_vis', JSON.stringify(levelVis)); } catch {} // backup
-  }, [levelVis]);
+  }, [levelVis, levelVisLoaded]);
 
   /* ─── SHOW ALL PRICE LEVELS BUTTON: Supabase app_settings ──────────── */
   const [showAllPriceLevelsBtn, setShowAllPriceLevelsBtn] = useState(true);
+  const [showAllLoaded, setShowAllLoaded] = useState(false);
   useEffect(() => {
     loadSetting('show_all_levels_btn').then(val => {
       if (val !== null) setShowAllPriceLevelsBtn(val);
       else { try { const s = localStorage.getItem('gsl_show_all_levels_btn'); if (s !== null) setShowAllPriceLevelsBtn(JSON.parse(s)); } catch {} }
+      setShowAllLoaded(true);
     });
   }, []);
   useEffect(() => {
+    if (!showAllLoaded) return; // don't save until initial load completes
     saveSetting('show_all_levels_btn', showAllPriceLevelsBtn);
     try { localStorage.setItem('gsl_show_all_levels_btn', JSON.stringify(showAllPriceLevelsBtn)); } catch {} // backup
-  }, [showAllPriceLevelsBtn]);
+  }, [showAllPriceLevelsBtn, showAllLoaded]);
 
 
   const isAdmin = user?.role === "admin";
