@@ -1666,6 +1666,259 @@ const SUBCAT_MAP = {PINE:'solid_pine',PRF:'primed_pine',MDF:'mdf',POPLAR:'poplar
 const CAT_MAP = {MLDG:'mouldings',S4S:'s4s_trimboards',HWBD:'hardwood_s4s',PANL:'panels_sheets',MELA:'melamine',JAMB:'door_jambs',NUCE:'nucedar',PVC:'pvc_trim',PLRO:'plinth_rosettes',BLNK:'blanks',SPEC:'specialty'};
 const DESC_CLEAN_RE = /\s*\(.*?\)\s*|\s*(SOLID|PRIMED|PINE|OAK|MDF|POPLAR|PVC|MAPLE|CHERRY|WALNUT|SAPELE|FIR|SYP|CEDAR|FLEX|BIRCH|LUAN|RADIATA|FJ)\s*$/gi;
 
+/* ═══════════════════════════════════════════════════════════════════════
+   PARSING_CONFIG  —  v31 two-layer pipeline
+   ───────────────────────────────────────────────────────────────────────
+   Layer 1 (routingRules) runs FIRST on raw CSV. It rewrites or drops
+   (pgMajor, pgMinor) pairs before anything else touches the row.
+     • reclassify:    move a (major,minor) to a different (major,minor)
+     • mergeMinors:   fold minor A's items into minor B's column, same major
+     • excludes:      drop these combinations entirely
+
+   Layer 2 (categoryParsingRules) runs per destination category AFTER
+   routing. Each category gets its own rule set:
+     • sku.lengthSuffixes / variantSuffixes / materialSuffixes
+         (generic tail stripping, shared with legacy stripSku path)
+     • sku.speciesSuffixes / compoundSuffixes  (NEW — map SKU tail → column)
+     • description.stripSpeciesTokens / stripLengthTokens / parentheticals
+     • pgMinorToColumn  (primary signal for species column in Hardwood)
+     • sort.by / sort.order  (post-parse ordering)
+
+   Resolution rule for species column:
+     suffix TRUMPS pgMinor; conflicts are flagged for review.
+     When SKU has no species suffix, fall back to pgMinor → column.
+═══════════════════════════════════════════════════════════════════════ */
+const DEFAULT_PARSING_CONFIG = {
+  routingRules: {
+    reclassify: [
+      { from:{major:'S4S', minor:'MDF'},     to:{major:'MLDG', minor:'MDF'},     note:'S4S MDF items belong in Mouldings', enabled:true },
+      { from:{major:'S4S', minor:'POP-PP'},  to:{major:'HWBD', minor:'POPPRM'},  note:'Poplar Primed routes to Hardwood', enabled:true },
+      { from:{major:'PLRO', minor:'*'},      to:{major:'MLDG', minor:'*'},       note:'All Plinth & Rosettes → Mouldings', enabled:true },
+    ],
+    mergeMinors: [
+      { major:'MLDG', from:'XLP30Y', into:'PRF', note:'Platinum XL prices fold into Primed column', enabled:true },
+    ],
+    excludes: [
+      { major:'BLNK', minor:'*', note:'Blanks are not customer-visible stock', enabled:true },
+      { major:'SPEC', minor:'*', note:'Specialty items not on the price portal', enabled:true },
+    ],
+  },
+  categoryParsingRules: {
+    defaults: {
+      sku: {
+        lengthSuffixes:   [], // populated lazily from VARIANT_SUFFIXES / LENGTH_RE
+        variantSuffixes:  [...VARIANT_SUFFIXES],
+        materialSuffixes: [...MATERIAL_SUFFIXES],
+        speciesSuffixes:  [],
+        compoundSuffixes: [],
+      },
+      description: {
+        stripSpeciesTokens: [],
+        stripLengthTokens:  ['RL','R/L'],
+        stripParentheticals: true,
+      },
+      sort: { by:['thickness','width','sku'], order:['asc','asc','asc'] },
+    },
+    hardwood_s4s: {
+      sku: {
+        speciesSuffixes: [
+          { pattern:'CH',  mapsTo:'cherry',    enabled:true },
+          { pattern:'MA',  mapsTo:'maple',     enabled:true },
+          { pattern:'SAP', mapsTo:'sapele',    enabled:true },
+          { pattern:'WAL', mapsTo:'walnut',    enabled:true },
+          { pattern:'WO',  mapsTo:'white_oak', enabled:true },
+          { pattern:'RO',  mapsTo:'red_oak',   enabled:true },
+          { pattern:'POP', mapsTo:'poplar_solid', enabled:true },
+        ],
+        compoundSuffixes: [
+          { pattern:'POP-PRM',    mapsTo:'poplar_primed',    enabled:true },
+          { pattern:'FJ-POP-PRM', mapsTo:'poplar_fj_primed', enabled:true },
+        ],
+      },
+      description: {
+        stripSpeciesTokens: [
+          'CHERRY','MAPLE','RED OAK','WHITE OAK','SAPELE','WALNUT','POPLAR',
+          'SOLID PRIMED POPLAR','FJ PRIMED POPLAR','PRIMED POPLAR'
+        ],
+        stripLengthTokens: ['RL','R/L'],
+        stripParentheticals: true,
+      },
+      pgMinorToColumn: {
+        CHERRY:'cherry', MAPLE:'maple', SAPELE:'sapele', WALNUT:'walnut',
+        POPLAR:'poplar_solid', POPPRM:'poplar_primed',
+        REDOAK:'red_oak', WOAK:'white_oak',
+      },
+      sort: { by:['thickness','width','sku'], order:['asc','asc','asc'] },
+    },
+    mouldings: {
+      description: {
+        stripSpeciesTokens: ['POPLAR','RED OAK','WHITE OAK','PINE','MDF','PVC','FIR','SYP','CEDAR'],
+        stripLengthTokens: ['RL','R/L'],
+        stripParentheticals: true,
+      },
+      pgMinorToColumn: {
+        PINE:'solid_pine', PRF:'primed_pine', MDF:'mdf', POPLAR:'poplar_solid',
+        'POP-PP':'poplar_fj_primed', REDOAK:'red_oak', WOAK:'white_oak',
+        PVC:'pvc', FLEX:'flex', FIR:'fir', SYP:'syp', XLP30Y:'primed_pine', // merged by routing
+      },
+    },
+    s4s_trimboards: {
+      description: {
+        stripSpeciesTokens: ['PINE','MDF','POPLAR','PRIMED'],
+        stripLengthTokens: ['RL','R/L'],
+        stripParentheticals: true,
+      },
+      pgMinorToColumn: {
+        PINE:'solid_pine', MDF:'mdf', 'POP-PP':'poplar_fj_primed',
+        GES4S:'ge_s4s', '21S4S':'s4s_21', '23S4S':'s4s_23', PLATXL:'platinum_xl',
+        XLP30Y:'platinum_xl',
+      },
+    },
+  },
+};
+
+/* Normalize a routing-rule "minor" (string or '*') for comparison. */
+const _minorMatch = (rule, actual) => rule === '*' || rule === actual;
+
+/* applyRoutingRules — runs BEFORE parsing. Returns either the routed
+   {major, minor} pair or null to signal "exclude this row". When a merge
+   rule matches we return the routed pair with an added `mergedFromMinor`
+   breadcrumb so downstream can log it if useful. */
+function applyRoutingRules(rawMajor, rawMinor, rules) {
+  if (!rules) return { major:rawMajor, minor:rawMinor };
+
+  // 1. Excludes win first.
+  for (const ex of (rules.excludes||[])) {
+    if (!ex.enabled) continue;
+    if (ex.major === rawMajor && _minorMatch(ex.minor, rawMinor)) return null;
+  }
+
+  let major = rawMajor, minor = rawMinor;
+
+  // 2. Reclassify. First match wins; '*' on the destination minor means
+  //    "keep the incoming minor" — used for category-wide moves like
+  //    PLRO|* → MLDG (keep minor, e.g. PLRO|PINE becomes MLDG|PINE).
+  for (const rc of (rules.reclassify||[])) {
+    if (!rc.enabled) continue;
+    if (rc.from.major === major && _minorMatch(rc.from.minor, minor)) {
+      major = rc.to.major;
+      minor = (rc.to.minor === '*' ? minor : rc.to.minor);
+      break;
+    }
+  }
+
+  // 3. MergeMinors — same-major collapses (e.g. MLDG|XLP30Y → MLDG|PRF).
+  //    Runs after reclassify so it can operate on the already-routed major.
+  let mergedFrom = null;
+  for (const mm of (rules.mergeMinors||[])) {
+    if (!mm.enabled) continue;
+    if (mm.major === major && mm.from === minor) {
+      mergedFrom = minor;
+      minor = mm.into;
+      break;
+    }
+  }
+
+  return { major, minor, mergedFromMinor:mergedFrom };
+}
+
+/* Resolve per-category parsing rules with inheritance from defaults.
+   Returns a merged rule object; consumers treat missing keys as "use
+   defaults." */
+function getCategoryRules(sectionKey, config) {
+  const cfg = config || DEFAULT_PARSING_CONFIG;
+  const defs = cfg.categoryParsingRules?.defaults || {};
+  const cat  = cfg.categoryParsingRules?.[sectionKey] || {};
+  return {
+    sku: { ...(defs.sku||{}), ...(cat.sku||{}) },
+    description: { ...(defs.description||{}), ...(cat.description||{}) },
+    pgMinorToColumn: { ...(defs.pgMinorToColumn||{}), ...(cat.pgMinorToColumn||{}) },
+    sort: cat.sort || defs.sort || { by:['sku'], order:['asc'] },
+  };
+}
+
+/* stripSpeciesSuffix — given a SKU and the destination category's rules,
+   peel off any species or compound suffix AFTER length/variant/material
+   stripping has already run. Returns { rootSku, speciesColumn, matched }.
+   Compound suffixes are checked first so POP-PRM wins over POP. */
+function stripSpeciesSuffix(sku, catRules) {
+  const compounds = (catRules.sku?.compoundSuffixes || []).filter(s => s.enabled !== false);
+  const species   = (catRules.sku?.speciesSuffixes   || []).filter(s => s.enabled !== false);
+
+  for (const cs of compounds) {
+    const pat = cs.pattern;
+    if (sku.endsWith(pat) && sku.length > pat.length) {
+      return { rootSku: sku.slice(0, -pat.length).replace(/-+$/,''), speciesColumn: cs.mapsTo, matched: pat };
+    }
+  }
+  for (const sp of species) {
+    const pat = sp.pattern;
+    if (sku.endsWith(pat) && sku.length > pat.length) {
+      return { rootSku: sku.slice(0, -pat.length).replace(/-+$/,''), speciesColumn: sp.mapsTo, matched: pat };
+    }
+  }
+  return { rootSku: sku, speciesColumn: null, matched: null };
+}
+
+/* cleanDescription — inline tokens first (species words, length-form
+   tokens), then parentheticals, then collapse doubled whitespace and
+   trim. Token strips are word-bounded and case-insensitive. Adjacency
+   to digits is handled ("1 X 10CHERRY" → "1 X 10") because some CSVs
+   omit the space. */
+function cleanDescription(raw, catRules) {
+  if (!raw) return '';
+  let out = raw;
+  const desc = catRules.description || {};
+
+  const species = desc.stripSpeciesTokens || [];
+  // Longest first so "SOLID PRIMED POPLAR" beats "POPLAR".
+  const sortedSpecies = [...species].sort((a,b) => b.length - a.length);
+  for (const tok of sortedSpecies) {
+    const escaped = tok.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    // Match the token anywhere, optionally abutting a digit or word boundary.
+    out = out.replace(new RegExp('(?<![A-Z])' + escaped + '(?![A-Z])', 'gi'), ' ');
+  }
+
+  const lengths = desc.stripLengthTokens || [];
+  for (const tok of lengths) {
+    const escaped = tok.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    out = out.replace(new RegExp('(^|\\s)' + escaped + '(\\s|$)', 'gi'), ' ');
+  }
+
+  if (desc.stripParentheticals !== false) {
+    out = out.replace(/\s*\([^)]*\)\s*/g, ' ');
+  }
+
+  // Normalize "X" → "x" in dimensions and collapse whitespace.
+  out = out.replace(/(\d)\s*X\s*(\d)/g, '$1 x $2');
+  out = out.replace(/\s+/g, ' ').trim();
+  return out;
+}
+
+/* parseDimension — pull (thickness, width) from a normalized description
+   like "1 x 10 S4S" or "3/4 x 5-1/2 STOOL". Returns numeric values so
+   they sort correctly. Fractions handled: "1/2" → 0.5, "5-1/2" → 5.5,
+   "1-1/8" → 1.125. */
+function parseDimension(desc) {
+  if (!desc) return { thickness:Infinity, width:Infinity };
+  const m = desc.match(/(\d+(?:[-\/]\d+)?(?:\/\d+)?)\s*x\s*(\d+(?:[-\/]\d+)?(?:\/\d+)?)/i);
+  if (!m) return { thickness:Infinity, width:Infinity };
+  return { thickness: _fractionToFloat(m[1]), width: _fractionToFloat(m[2]) };
+}
+function _fractionToFloat(s) {
+  if (!s) return Infinity;
+  s = s.trim();
+  // "5-1/2"  → 5 + 1/2
+  const mixed = s.match(/^(\d+)-(\d+)\/(\d+)$/);
+  if (mixed) return parseInt(mixed[1]) + parseInt(mixed[2]) / parseInt(mixed[3]);
+  // "1/2"    → 0.5
+  const frac = s.match(/^(\d+)\/(\d+)$/);
+  if (frac) return parseInt(frac[1]) / parseInt(frac[2]);
+  // "5"
+  const n = parseFloat(s);
+  return isNaN(n) ? Infinity : n;
+}
+
 function stripSku(rawSku, excludedLengths={}, excludedVariants={}, excludedMaterials={}) {
   let sku = rawSku;
   let length = null;
@@ -1731,7 +1984,23 @@ function scanSuffixes(allSkus) {
   return { lengths, variants, materials };
 }
 
-function parseCSV(text) {
+/* parseCSV — v31 two-layer pipeline.
+
+   Layer 1: routing rules on (PG Major, PG Minor) pulled from DEFAULT_PARSING_CONFIG
+   Layer 2: per-category parsing rules (SKU species stripping + description
+            cleaning + PG-Minor → column mapping)
+
+   Species column resolution rule (per decision this chat):
+     SKU suffix trumps PG Minor. Conflicts are collected for UI review.
+     When the SKU has no species suffix, fall back to pgMinorToColumn.
+     When neither resolves, fall back to the legacy SUBCAT_MAP.
+
+   Output shape is backward-compatible with v30 (items/rawCount/rootCount/
+   sections/hasLevels/levelSummary) plus two new fields:
+     • conflicts:     [{sku,section,bySuffix,byPgMinor,desc,price}, ...]
+     • routingStats:  {reclassified,merged,excluded} counters.
+*/
+function parseCSV(text, config) {
   const lines = text.trim().split('\n');
   if (lines.length < 2) return {error:'CSV has no data rows'};
   const header = lines[0].split(',').map(h=>h.trim().replace(/"/g,''));
@@ -1750,8 +2019,14 @@ function parseCSV(text) {
   if (priceIdx<0) return {error:'CSV must have a Price column'};
   const hasLevels = levelIdx >= 0;
   const allLevelDescs = new Set();
-  
-  const products = {};
+
+  const cfg = config || DEFAULT_PARSING_CONFIG;
+  const routingRules = cfg.routingRules;
+
+  const products  = {};
+  const conflicts = [];
+  const routingStats = { reclassified:0, merged:0, excluded:0 };
+
   let rawCount = 0;
   for (let i=1;i<lines.length;i++) {
     // Handle quoted CSV properly
@@ -1765,33 +2040,78 @@ function parseCSV(text) {
     cols.push(current.trim());
     if (cols.length<2) continue;
     rawCount++;
-    
+
     let sku = (cols[skuIdx>=0?skuIdx:1]||'').toUpperCase();
     const desc = cols[descIdx>=0?descIdx:2]||'';
-    const cat = cols[catIdx>=0?catIdx:'']||'';
-    const sub = cols[subIdx>=0?subIdx:'']||'';
+    const rawMajor = (cols[catIdx>=0?catIdx:'']||'').toUpperCase();
+    const rawMinor = (cols[subIdx>=0?subIdx:'']||'').toUpperCase();
     const price = parseFloat(cols[priceIdx])||0;
     const uom = (cols[uomIdx>=0?uomIdx:'']||'LF').toUpperCase();
     const level = hasLevels ? parseInt(cols[levelIdx])||1 : 1;
     const levelDesc = hasLevels && levelDescIdx>=0 ? cols[levelDescIdx]||'BASE PRICE' : 'BASE PRICE';
     const minPak = minPakIdx>=0 ? parseInt(cols[minPakIdx])||0 : 0;
     const minPakUom = minPakUomIdx>=0 ? (cols[minPakUomIdx]||'').toUpperCase() : '';
-    
+
     if (hasLevels) allLevelDescs.add(level + '|' + levelDesc);
-    
-    const {rootSku, baseSku, length} = stripSku(sku);
-    const section = CAT_MAP[cat] || 'mouldings';
-    const material = SUBCAT_MAP[sub] || 'misc';
-    const cleanDesc = desc.replace(DESC_CLEAN_RE,'').trim();
-    
+
+    // ── LAYER 1 · ROUTING ─────────────────────────────────────────────
+    const routed = applyRoutingRules(rawMajor, rawMinor, routingRules);
+    if (routed === null) { routingStats.excluded++; continue; }
+    if (routed.major !== rawMajor || routed.minor !== rawMinor) {
+      if (routed.mergedFromMinor) routingStats.merged++;
+      else routingStats.reclassified++;
+    }
+    const routedMajor = routed.major;
+    const routedMinor = routed.minor;
+
+    // Destination section key (from MLDG/HWBD/S4S etc → mouldings/hardwood_s4s/s4s_trimboards).
+    const section = CAT_MAP[routedMajor] || 'mouldings';
+    const catRules = getCategoryRules(section, cfg);
+
+    // ── LAYER 2a · GENERIC SKU TAIL STRIPPING  (length/variant/material) ─
+    const { rootSku: stripRoot, baseSku, length } = stripSku(sku);
+
+    // ── LAYER 2b · SPECIES / COMPOUND SUFFIX on ALREADY-TAIL-STRIPPED SKU ─
+    //    Returns {rootSku, speciesColumn, matched}; speciesColumn wins
+    //    over PG Minor unless missing.
+    const speciesResult = stripSpeciesSuffix(stripRoot, catRules);
+    const rootSku = speciesResult.rootSku;
+
+    // ── LAYER 2c · RESOLVE SPECIES COLUMN ─────────────────────────────
+    //    Priority: suffix > pgMinorToColumn[minor] > legacy SUBCAT_MAP > 'misc'.
+    const fromSuffix   = speciesResult.speciesColumn;
+    const fromPgMinor  = (catRules.pgMinorToColumn || {})[routedMinor];
+    const fromLegacy   = SUBCAT_MAP[routedMinor];
+    let material = fromSuffix || fromPgMinor || fromLegacy || 'misc';
+
+    // Flag suffix vs PG-Minor disagreement so the admin can review it.
+    if (fromSuffix && fromPgMinor && fromSuffix !== fromPgMinor) {
+      conflicts.push({
+        sku, section, rootSku, desc,
+        bySuffix: fromSuffix,
+        byPgMinor: fromPgMinor,
+        pgMajor: routedMajor,
+        pgMinor: routedMinor,
+        resolved: fromSuffix,   // suffix wins
+        price,
+      });
+    }
+
+    // ── LAYER 2d · DESCRIPTION CLEANUP (per-category rules) ───────────
+    const cleanDesc = cleanDescription(desc, catRules);
+
+    // ── COLLAPSE onto (section|rootSku) ───────────────────────────────
     const key = section+'|'+rootSku;
     if (!products[key]) products[key] = {sku:rootSku, desc:cleanDesc, section, mats:{}, visible:true};
     if (!products[key].mats[material]) products[key].mats[material] = {p:price,u:uom,l:[],s:baseSku,levels:[],minPak:0,minPakUom:''};
-    
+
     const mat = products[key].mats[material];
     if (length && !mat.l.includes(length)) mat.l.push(length);
-    if (!products[key].desc && cleanDesc) products[key].desc = cleanDesc;
-    
+    // Prefer the cleanest non-empty description we've seen for this root.
+    if (cleanDesc && (!products[key].desc || cleanDesc.length < products[key].desc.length)) {
+      products[key].desc = cleanDesc;
+    }
+
     // Store price level
     const existingLevel = mat.levels.find(lv => lv.level === level);
     if (!existingLevel) {
@@ -1802,7 +2122,7 @@ function parseCSV(text) {
     // MinPak
     if (minPak > 0 && !mat.minPak) { mat.minPak = minPak; mat.minPakUom = minPakUom; }
   }
-  
+
   // Sort levels within each material
   Object.values(products).forEach(prod => {
     Object.values(prod.mats).forEach(mat => {
@@ -1811,10 +2131,57 @@ function parseCSV(text) {
       if (mat.levels.length === 0) mat.levels.push({level:1, desc:'BASE PRICE', price:mat.p, visible:true});
     });
   });
-  
-  const items = Object.values(products);
+
+  // ── POST-PARSE SORT · dimension-first, per category ───────────────────
+  //    Each category's rules decide which fields to sort on and direction.
+  //    Stable Array.prototype.sort handles multi-key via a compound key fn.
+  let items = Object.values(products);
+  items.forEach(it => {
+    const dim = parseDimension(it.desc || '');
+    it._thickness = dim.thickness;
+    it._width     = dim.width;
+  });
+  // Group by section first so sort comparators don't interleave categories,
+  // then sort each group by its own rules, then flatten.
+  const bySection = {};
+  items.forEach(it => { (bySection[it.section] = bySection[it.section] || []).push(it); });
+  const sortedItems = [];
+  Object.entries(bySection).forEach(([section, arr]) => {
+    const rules = getCategoryRules(section, cfg).sort || { by:['sku'], order:['asc'] };
+    const fields = rules.by || ['sku'];
+    const orders = rules.order || fields.map(()=>'asc');
+    arr.sort((a, b) => {
+      for (let i = 0; i < fields.length; i++) {
+        const f = fields[i];
+        const dir = (orders[i] === 'desc') ? -1 : 1;
+        const av = f === 'thickness' ? a._thickness
+                 : f === 'width'     ? a._width
+                 : f === 'sku'       ? a.sku
+                 : a[f];
+        const bv = f === 'thickness' ? b._thickness
+                 : f === 'width'     ? b._width
+                 : f === 'sku'       ? b.sku
+                 : b[f];
+        if (av === bv) continue;
+        if (av === undefined) return 1 * dir;
+        if (bv === undefined) return -1 * dir;
+        return (av < bv ? -1 : 1) * dir;
+      }
+      return 0;
+    });
+    sortedItems.push(...arr);
+  });
+  // Clean internal sort keys before returning.
+  sortedItems.forEach(it => { delete it._thickness; delete it._width; });
+  items = sortedItems;
+
   const levelSummary = [...allLevelDescs].map(s => {const [l,d]=s.split('|'); return {level:parseInt(l),desc:d};}).sort((a,b)=>a.level-b.level);
-  return {items, rawCount, rootCount:items.length, sections:[...new Set(items.map(i=>i.section))], hasLevels, levelSummary};
+  return {
+    items, rawCount, rootCount:items.length,
+    sections:[...new Set(items.map(i=>i.section))],
+    hasLevels, levelSummary,
+    conflicts, routingStats,
+  };
 }
 
 /* ─── PRODUCT ADMIN PANEL ─── */
@@ -1835,6 +2202,33 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
   const [excludedMaterials, setExcludedMaterials] = useState({});
   const [suffixScan, setSuffixScan] = useState(null);
   const [showLevelVis, setShowLevelVis] = useState(false);
+
+  /* ─── v31 parsing pipeline state ─────────────────────────────────────
+     showRoutingPanel  — Layer 1 collapsible panel visibility
+     showParsingPanel  — Layer 2 collapsible panel visibility
+     activeRuleCat     — which category's rules the Layer-2 panel edits
+     parsingConfig     — editable copy of DEFAULT_PARSING_CONFIG; every
+                         user change mutates a deep clone so re-parsing
+                         sees the updated rules. Persisted alongside the
+                         published catalog in a future chat.                         */
+  const [showRoutingPanel, setShowRoutingPanel] = useState(false);
+  const [showParsingPanel, setShowParsingPanel] = useState(false);
+  const [activeRuleCat,    setActiveRuleCat]    = useState('hardwood_s4s');
+  const [parsingConfig,    setParsingConfig]    = useState(() => {
+    // deep clone so mutations don't leak into the module-level constant.
+    return JSON.parse(JSON.stringify(DEFAULT_PARSING_CONFIG));
+  });
+  /* Re-parse the last-uploaded CSV whenever rules change, so the diff
+     preview and product grid reflect the new config without requiring
+     another upload. Cheap for the scale we're working at. */
+  useEffect(() => {
+    if (!csvData) return;
+    const result = parseCSV(csvData, parsingConfig);
+    if (result.error) return;
+    setParsedItems(result.items);
+    setParseStats({...result, source:'csv'});
+  }, [parsingConfig, csvData]);
+
   /* Editing state: which material row is currently being edited, and the
      draft values for that row. Shape of editingKey: "sku|material".
      Null = nothing being edited. editDraft holds the in-flight field values. */
@@ -1850,6 +2244,153 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
   const [changesOnly, setChangesOnly] = useState(true);
   const [scareDialog, setScareDialog] = useState(null);
   const fileRef = useRef(null);
+
+  /* ─── v31 PARSING-CONFIG MUTATION HELPERS ────────────────────────────
+     Every mutation produces a new top-level object via structured clone
+     so React's identity check triggers re-render AND the useEffect above
+     re-runs parseCSV with the fresh rules. Mutations never reach into
+     the module-level constant (that stays the documented default). */
+  const updateConfig = useCallback((mutator) => {
+    setParsingConfig(prev => {
+      const next = JSON.parse(JSON.stringify(prev));
+      mutator(next);
+      return next;
+    });
+  }, []);
+
+  /* Routing — reclassify */
+  const addReclassifyRule = () => updateConfig(c => {
+    c.routingRules.reclassify.push({
+      from:{major:'', minor:'*'}, to:{major:'', minor:'*'}, note:'', enabled:true,
+    });
+  });
+  const removeReclassifyRule = (idx) => updateConfig(c => {
+    c.routingRules.reclassify.splice(idx, 1);
+  });
+  const updateReclassifyRule = (idx, patch) => updateConfig(c => {
+    Object.assign(c.routingRules.reclassify[idx], patch);
+  });
+  const toggleReclassifyRule = (idx) => updateConfig(c => {
+    c.routingRules.reclassify[idx].enabled = !c.routingRules.reclassify[idx].enabled;
+  });
+
+  /* Routing — merge minors */
+  const addMergeRule = () => updateConfig(c => {
+    c.routingRules.mergeMinors.push({ major:'', from:'', into:'', note:'', enabled:true });
+  });
+  const removeMergeRule = (idx) => updateConfig(c => {
+    c.routingRules.mergeMinors.splice(idx, 1);
+  });
+  const updateMergeRule = (idx, patch) => updateConfig(c => {
+    Object.assign(c.routingRules.mergeMinors[idx], patch);
+  });
+  const toggleMergeRule = (idx) => updateConfig(c => {
+    c.routingRules.mergeMinors[idx].enabled = !c.routingRules.mergeMinors[idx].enabled;
+  });
+
+  /* Routing — excludes */
+  const addExcludeRule = () => updateConfig(c => {
+    c.routingRules.excludes.push({ major:'', minor:'*', note:'', enabled:true });
+  });
+  const removeExcludeRule = (idx) => updateConfig(c => {
+    c.routingRules.excludes.splice(idx, 1);
+  });
+  const updateExcludeRule = (idx, patch) => updateConfig(c => {
+    Object.assign(c.routingRules.excludes[idx], patch);
+  });
+  const toggleExcludeRule = (idx) => updateConfig(c => {
+    c.routingRules.excludes[idx].enabled = !c.routingRules.excludes[idx].enabled;
+  });
+
+  /* Parsing — helpers take a category key ('defaults' or section key)
+     and mutate that category's subtree. Ensures the category node exists
+     lazily so editing inherited values automatically promotes them. */
+  const ensureCatNode = (c, catKey) => {
+    if (!c.categoryParsingRules[catKey]) c.categoryParsingRules[catKey] = {};
+    return c.categoryParsingRules[catKey];
+  };
+  const ensureSkuNode = (c, catKey) => {
+    const cat = ensureCatNode(c, catKey);
+    if (!cat.sku) cat.sku = {};
+    return cat.sku;
+  };
+  const ensureDescNode = (c, catKey) => {
+    const cat = ensureCatNode(c, catKey);
+    if (!cat.description) cat.description = {};
+    return cat.description;
+  };
+
+  /* Species/Compound suffix pill toggles + add + remove */
+  const toggleSpeciesSuffix = (catKey, idx) => updateConfig(c => {
+    const list = ensureSkuNode(c, catKey).speciesSuffixes || [];
+    if (list[idx]) list[idx].enabled = list[idx].enabled === false;
+  });
+  const addSpeciesSuffix = (catKey, pattern, mapsTo) => updateConfig(c => {
+    const sku = ensureSkuNode(c, catKey);
+    sku.speciesSuffixes = sku.speciesSuffixes || [];
+    sku.speciesSuffixes.push({ pattern:pattern.toUpperCase(), mapsTo, enabled:true });
+  });
+  const removeSpeciesSuffix = (catKey, idx) => updateConfig(c => {
+    const sku = ensureSkuNode(c, catKey);
+    if (sku.speciesSuffixes) sku.speciesSuffixes.splice(idx, 1);
+  });
+  const toggleCompoundSuffix = (catKey, idx) => updateConfig(c => {
+    const list = ensureSkuNode(c, catKey).compoundSuffixes || [];
+    if (list[idx]) list[idx].enabled = list[idx].enabled === false;
+  });
+  const addCompoundSuffix = (catKey, pattern, mapsTo) => updateConfig(c => {
+    const sku = ensureSkuNode(c, catKey);
+    sku.compoundSuffixes = sku.compoundSuffixes || [];
+    sku.compoundSuffixes.push({ pattern:pattern.toUpperCase(), mapsTo, enabled:true });
+  });
+  const removeCompoundSuffix = (catKey, idx) => updateConfig(c => {
+    const sku = ensureSkuNode(c, catKey);
+    if (sku.compoundSuffixes) sku.compoundSuffixes.splice(idx, 1);
+  });
+
+  /* Description token pill lists (species tokens, length tokens) */
+  const addDescSpeciesToken = (catKey, token) => updateConfig(c => {
+    const d = ensureDescNode(c, catKey);
+    d.stripSpeciesTokens = d.stripSpeciesTokens || [];
+    if (!d.stripSpeciesTokens.includes(token)) d.stripSpeciesTokens.push(token.toUpperCase());
+  });
+  const removeDescSpeciesToken = (catKey, idx) => updateConfig(c => {
+    const d = ensureDescNode(c, catKey);
+    if (d.stripSpeciesTokens) d.stripSpeciesTokens.splice(idx, 1);
+  });
+  const addDescLengthToken = (catKey, token) => updateConfig(c => {
+    const d = ensureDescNode(c, catKey);
+    d.stripLengthTokens = d.stripLengthTokens || [];
+    if (!d.stripLengthTokens.includes(token)) d.stripLengthTokens.push(token);
+  });
+  const removeDescLengthToken = (catKey, idx) => updateConfig(c => {
+    const d = ensureDescNode(c, catKey);
+    if (d.stripLengthTokens) d.stripLengthTokens.splice(idx, 1);
+  });
+  const toggleStripParens = (catKey) => updateConfig(c => {
+    const d = ensureDescNode(c, catKey);
+    d.stripParentheticals = !(d.stripParentheticals !== false);
+  });
+
+  /* PG Minor → column mapping */
+  const addPgMinorMap = (catKey, pgMinor, column) => updateConfig(c => {
+    const cat = ensureCatNode(c, catKey);
+    if (!cat.pgMinorToColumn) cat.pgMinorToColumn = {};
+    cat.pgMinorToColumn[pgMinor.toUpperCase()] = column;
+  });
+  const removePgMinorMap = (catKey, pgMinor) => updateConfig(c => {
+    const cat = ensureCatNode(c, catKey);
+    if (cat.pgMinorToColumn) delete cat.pgMinorToColumn[pgMinor];
+  });
+
+  /* Resolve rules for the currently-selected parsing-rules category.
+     'defaults' shows the global defaults branch directly. */
+  const editCatRules = useMemo(() => {
+    if (activeRuleCat === 'defaults') {
+      return parsingConfig.categoryParsingRules.defaults || {};
+    }
+    return parsingConfig.categoryParsingRules[activeRuleCat] || {};
+  }, [parsingConfig, activeRuleCat]);
 
   /* ─── OVERRIDE APPLICATION & EDITING HELPERS ─────────────────────────
      Overrides are stored at App level; we only read/write them here. All
@@ -1967,7 +2508,7 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
     const reader = new FileReader();
     reader.onload = (e) => {
       setCsvData(e.target.result);
-      const result = parseCSV(e.target.result);
+      const result = parseCSV(e.target.result, parsingConfig);
       if (result.error) { alert(result.error); return; }
       setParsedItems(result.items);
       setParseStats({...result, source:'csv'});
@@ -2288,70 +2829,274 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
         </div>
       )}
 
-      {/* Suffix Stripping Rules */}
+      {/* ═══════════════════════════════════════════════════════════════
+          v31 · LAYER 1 — ROUTING RULES
+          Reclassify / Merge Minors / Exclude combinations of (PG Major,
+          PG Minor) before any parsing runs. Rules are backed by
+          parsingConfig.routingRules and every mutation re-parses the
+          staged CSV automatically via the useEffect above.
+          ═══════════════════════════════════════════════════════════════ */}
       <div style={{marginBottom:24}}>
-        <button onClick={()=>setShowSuffixPanel(!showSuffixPanel)} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 16px",borderRadius:8,border:"1px solid rgba(197,165,90,0.2)",background:"linear-gradient(145deg,#000,#0C1F0E)",color:GOLD,fontSize:12,fontWeight:700,cursor:"pointer",width:"100%",justifyContent:"space-between"}}>
-          <span>Suffix Stripping Rules — control how SKUs are parsed into root products</span>
-          <span style={{fontSize:14}}>{showSuffixPanel?'▲':'▼'}</span>
+        <button onClick={()=>setShowRoutingPanel(!showRoutingPanel)} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 16px",borderRadius:showRoutingPanel?"8px 8px 0 0":8,border:"1px solid rgba(197,165,90,0.2)",borderBottom:showRoutingPanel?"none":"1px solid rgba(197,165,90,0.2)",background:"linear-gradient(145deg,#000,#0C1F0E)",color:GOLD,fontSize:12,fontWeight:700,cursor:"pointer",width:"100%",justifyContent:"space-between",letterSpacing:0.5}}>
+          <span style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:20,height:20,borderRadius:"50%",background:GOLD,color:"#000",fontSize:10,fontWeight:800,fontFamily:"'IBM Plex Mono',monospace"}}>1</span>
+            <span>Routing Rules — reclassify, merge, or exclude PG Major / Minor combinations</span>
+            <span style={{fontSize:9,padding:"2px 7px",borderRadius:10,background:"rgba(197,165,90,0.08)",border:"1px solid rgba(197,165,90,0.2)",color:GOLD,letterSpacing:0.5,fontWeight:700}}>{(parsingConfig.routingRules.reclassify.filter(r=>r.enabled).length + parsingConfig.routingRules.mergeMinors.filter(r=>r.enabled).length + parsingConfig.routingRules.excludes.filter(r=>r.enabled).length)} ACTIVE</span>
+          </span>
+          <span style={{fontSize:14}}>{showRoutingPanel?'▲':'▼'}</span>
         </button>
-        {showSuffixPanel && suffixScan && (
+        {showRoutingPanel && (
           <div style={{background:"linear-gradient(145deg,#000,#0C1F0E)",borderRadius:"0 0 10px 10px",border:"1px solid rgba(197,165,90,0.15)",borderTop:"none",padding:20}}>
             <div style={{fontSize:11,color:"rgba(255,255,255,0.6)",marginBottom:16,lineHeight:1.6}}>
-              Toggle suffixes on/off. <strong style={{color:GOLD}}>ON (green)</strong> = suffix gets stripped to collapse into root SKU. <strong style={{color:"#ff6b6b"}}>OFF (red)</strong> = suffix stays, item treated as separate product. Changes apply to CSV imports.
+              Runs first, before any parsing. Use <strong style={{color:GOLD}}>*</strong> to match every minor under a major.
+              {parseStats?.routingStats && (
+                <span style={{marginLeft:12,fontSize:10,fontFamily:"'IBM Plex Mono',monospace",color:"rgba(255,255,255,0.45)"}}>
+                  Last import: {parseStats.routingStats.reclassified} reclassified · {parseStats.routingStats.merged} merged · {parseStats.routingStats.excluded} excluded
+                </span>
+              )}
             </div>
 
-            {/* Length Suffixes */}
-            <div style={{marginBottom:20}}>
-              <div style={{fontSize:11,color:GOLD,fontWeight:700,letterSpacing:1,marginBottom:10,textTransform:"uppercase"}}>Length Suffixes <span style={{color:"rgba(255,255,255,0.3)",fontWeight:400,textTransform:"none"}}>— numeric tails stripped to extract length</span></div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {Object.entries(suffixScan.lengths).sort((a,b)=>b[1]-a[1]).map(([suffix,count]) => {
-                  const excluded = !!excludedLengths[suffix];
-                  return (
-                    <button key={suffix} onClick={()=>toggleLength(suffix)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:6,border:`1px solid ${excluded?"rgba(255,100,100,0.3)":"rgba(76,175,80,0.3)"}`,background:excluded?"rgba(255,100,100,0.06)":"rgba(76,175,80,0.06)",cursor:"pointer",transition:"all 0.15s"}}>
-                      <span style={{fontSize:12,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace",color:excluded?"#ff6b6b":"#4CAF50"}}>{suffix}</span>
-                      <span style={{fontSize:9,color:"rgba(255,255,255,0.3)"}}>×{count}</span>
-                      <span style={{fontSize:10,color:excluded?"#ff6b6b":"#4CAF50"}}>{excluded?"OFF":"ON"}</span>
-                    </button>
-                  );
-                })}
-                {Object.keys(suffixScan.lengths).length===0 && <span style={{fontSize:11,color:"rgba(255,255,255,0.25)"}}>No length suffixes found in data</span>}
+            {/* RECLASSIFY */}
+            <div style={{marginBottom:18}}>
+              <div style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:1.5,marginBottom:10,textTransform:"uppercase"}}>Reclassify <span style={{color:"rgba(255,255,255,0.3)",fontWeight:400,textTransform:"none",letterSpacing:0.3,marginLeft:6}}>— move an incoming combination to a different category</span></div>
+              {parsingConfig.routingRules.reclassify.map((r, idx) => (
+                <div key={idx} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",borderRadius:8,background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.05)",marginBottom:8,flexWrap:"wrap",opacity:r.enabled?1:0.45}}>
+                  <input value={r.from.major} onChange={e=>updateReclassifyRule(idx,{from:{...r.from,major:e.target.value.toUpperCase()}})} placeholder="MAJOR" style={{background:"rgba(197,165,90,0.08)",border:"1px solid rgba(197,165,90,0.2)",color:GOLD,padding:"4px 9px",borderRadius:5,fontSize:11,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace",width:80,outline:"none"}}/>
+                  <input value={r.from.minor} onChange={e=>updateReclassifyRule(idx,{from:{...r.from,minor:e.target.value.toUpperCase()}})} placeholder="MINOR" style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.75)",padding:"4px 9px",borderRadius:5,fontSize:11,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace",width:90,outline:"none"}}/>
+                  <span style={{color:GOLD,fontFamily:"'IBM Plex Mono',monospace",fontSize:14,fontWeight:700}}>→</span>
+                  <input value={r.to.major} onChange={e=>updateReclassifyRule(idx,{to:{...r.to,major:e.target.value.toUpperCase()}})} placeholder="MAJOR" style={{background:"rgba(197,165,90,0.08)",border:"1px solid rgba(197,165,90,0.2)",color:GOLD,padding:"4px 9px",borderRadius:5,fontSize:11,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace",width:80,outline:"none"}}/>
+                  <input value={r.to.minor} onChange={e=>updateReclassifyRule(idx,{to:{...r.to,minor:e.target.value.toUpperCase()}})} placeholder="MINOR" style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.75)",padding:"4px 9px",borderRadius:5,fontSize:11,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace",width:90,outline:"none"}}/>
+                  <input value={r.note||''} onChange={e=>updateReclassifyRule(idx,{note:e.target.value})} placeholder="note" style={{flex:1,minWidth:100,background:"transparent",border:0,color:"rgba(255,255,255,0.5)",fontSize:10,fontStyle:"italic",outline:"none",marginLeft:6}}/>
+                  <button onClick={()=>toggleReclassifyRule(idx)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${r.enabled?"rgba(76,175,80,0.3)":"rgba(255,100,100,0.3)"}`,background:r.enabled?"rgba(76,175,80,0.08)":"rgba(255,100,100,0.06)",color:r.enabled?"#4CAF50":"#ff6b6b",fontSize:10,fontWeight:700,cursor:"pointer"}}>{r.enabled?"ON":"OFF"}</button>
+                  <button onClick={()=>removeReclassifyRule(idx)} style={{background:"none",border:0,color:"#ff6b6b",cursor:"pointer",fontSize:16,opacity:0.5}} title="Remove">×</button>
+                </div>
+              ))}
+              <button onClick={addReclassifyRule} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:6,border:"1px solid rgba(197,165,90,0.2)",background:"transparent",color:GOLD,fontSize:11,fontWeight:700,letterSpacing:0.5,cursor:"pointer",marginTop:4}}>+ Add reclassify rule</button>
+            </div>
+
+            {/* MERGE MINORS */}
+            <div style={{marginBottom:18}}>
+              <div style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:1.5,marginBottom:10,textTransform:"uppercase"}}>Merge Minors <span style={{color:"rgba(255,255,255,0.3)",fontWeight:400,textTransform:"none",letterSpacing:0.3,marginLeft:6}}>— fold one minor's items into another minor's column inside the same major</span></div>
+              {parsingConfig.routingRules.mergeMinors.map((r, idx) => (
+                <div key={idx} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",borderRadius:8,background:"rgba(0,0,0,0.4)",border:"1px solid rgba(255,255,255,0.05)",marginBottom:8,flexWrap:"wrap",opacity:r.enabled?1:0.45}}>
+                  <input value={r.major} onChange={e=>updateMergeRule(idx,{major:e.target.value.toUpperCase()})} placeholder="MAJOR" style={{background:"rgba(197,165,90,0.08)",border:"1px solid rgba(197,165,90,0.2)",color:GOLD,padding:"4px 9px",borderRadius:5,fontSize:11,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace",width:80,outline:"none"}}/>
+                  <input value={r.from} onChange={e=>updateMergeRule(idx,{from:e.target.value.toUpperCase()})} placeholder="FROM" style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.75)",padding:"4px 9px",borderRadius:5,fontSize:11,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace",width:90,outline:"none"}}/>
+                  <span style={{color:"#b088ff",fontFamily:"'IBM Plex Mono',monospace",fontSize:14,fontWeight:700}}>⊕</span>
+                  <input value={r.into} onChange={e=>updateMergeRule(idx,{into:e.target.value.toUpperCase()})} placeholder="INTO" style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.75)",padding:"4px 9px",borderRadius:5,fontSize:11,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace",width:90,outline:"none"}}/>
+                  <input value={r.note||''} onChange={e=>updateMergeRule(idx,{note:e.target.value})} placeholder="note" style={{flex:1,minWidth:100,background:"transparent",border:0,color:"rgba(255,255,255,0.5)",fontSize:10,fontStyle:"italic",outline:"none",marginLeft:6}}/>
+                  <button onClick={()=>toggleMergeRule(idx)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${r.enabled?"rgba(76,175,80,0.3)":"rgba(255,100,100,0.3)"}`,background:r.enabled?"rgba(76,175,80,0.08)":"rgba(255,100,100,0.06)",color:r.enabled?"#4CAF50":"#ff6b6b",fontSize:10,fontWeight:700,cursor:"pointer"}}>{r.enabled?"ON":"OFF"}</button>
+                  <button onClick={()=>removeMergeRule(idx)} style={{background:"none",border:0,color:"#ff6b6b",cursor:"pointer",fontSize:16,opacity:0.5}}>×</button>
+                </div>
+              ))}
+              <button onClick={addMergeRule} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:6,border:"1px solid rgba(197,165,90,0.2)",background:"transparent",color:GOLD,fontSize:11,fontWeight:700,letterSpacing:0.5,cursor:"pointer",marginTop:4}}>+ Add merge rule</button>
+            </div>
+
+            {/* EXCLUDES */}
+            <div style={{marginBottom:8}}>
+              <div style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:1.5,marginBottom:10,textTransform:"uppercase"}}>Exclude <span style={{color:"rgba(255,255,255,0.3)",fontWeight:400,textTransform:"none",letterSpacing:0.3,marginLeft:6}}>— drop these combinations entirely, do not import</span></div>
+              {parsingConfig.routingRules.excludes.map((r, idx) => (
+                <div key={idx} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",borderRadius:8,background:"rgba(255,100,100,0.03)",border:"1px solid rgba(255,100,100,0.12)",marginBottom:8,flexWrap:"wrap",opacity:r.enabled?1:0.45}}>
+                  <input value={r.major} onChange={e=>updateExcludeRule(idx,{major:e.target.value.toUpperCase()})} placeholder="MAJOR" style={{background:"rgba(255,100,100,0.08)",border:"1px solid rgba(255,100,100,0.3)",color:"#ff6b6b",padding:"4px 9px",borderRadius:5,fontSize:11,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace",width:80,outline:"none"}}/>
+                  <input value={r.minor} onChange={e=>updateExcludeRule(idx,{minor:e.target.value.toUpperCase()})} placeholder="MINOR" style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.75)",padding:"4px 9px",borderRadius:5,fontSize:11,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace",width:90,outline:"none"}}/>
+                  <span style={{color:"#ff6b6b",fontFamily:"'IBM Plex Mono',monospace",fontSize:14,fontWeight:700}}>✕</span>
+                  <em style={{color:"rgba(255,255,255,0.35)",fontSize:11}}>not imported</em>
+                  <input value={r.note||''} onChange={e=>updateExcludeRule(idx,{note:e.target.value})} placeholder="note" style={{flex:1,minWidth:100,background:"transparent",border:0,color:"rgba(255,255,255,0.5)",fontSize:10,fontStyle:"italic",outline:"none",marginLeft:6}}/>
+                  <button onClick={()=>toggleExcludeRule(idx)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${r.enabled?"rgba(76,175,80,0.3)":"rgba(255,100,100,0.3)"}`,background:r.enabled?"rgba(76,175,80,0.08)":"rgba(255,100,100,0.06)",color:r.enabled?"#4CAF50":"#ff6b6b",fontSize:10,fontWeight:700,cursor:"pointer"}}>{r.enabled?"ON":"OFF"}</button>
+                  <button onClick={()=>removeExcludeRule(idx)} style={{background:"none",border:0,color:"#ff6b6b",cursor:"pointer",fontSize:16,opacity:0.5}}>×</button>
+                </div>
+              ))}
+              <button onClick={addExcludeRule} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:6,border:"1px solid rgba(197,165,90,0.2)",background:"transparent",color:GOLD,fontSize:11,fontWeight:700,letterSpacing:0.5,cursor:"pointer",marginTop:4}}>+ Add exclude rule</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          v31 · LAYER 2 — PARSING RULES (per category)
+          Category tabs at top select which rule set you edit. Each
+          category's rules cover SKU suffix stripping, description token
+          stripping, PG Minor → column mapping, and sort order. Rules
+          inherit from `defaults` unless overridden.
+          ═══════════════════════════════════════════════════════════════ */}
+      <div style={{marginBottom:24}}>
+        <button onClick={()=>setShowParsingPanel(!showParsingPanel)} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 16px",borderRadius:showParsingPanel?"8px 8px 0 0":8,border:"1px solid rgba(197,165,90,0.2)",borderBottom:showParsingPanel?"none":"1px solid rgba(197,165,90,0.2)",background:"linear-gradient(145deg,#000,#0C1F0E)",color:GOLD,fontSize:12,fontWeight:700,cursor:"pointer",width:"100%",justifyContent:"space-between",letterSpacing:0.5}}>
+          <span style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:20,height:20,borderRadius:"50%",background:GOLD,color:"#000",fontSize:10,fontWeight:800,fontFamily:"'IBM Plex Mono',monospace"}}>2</span>
+            <span>Parsing Rules — per-category SKU &amp; description cleaning</span>
+            <span style={{fontSize:9,padding:"2px 7px",borderRadius:10,background:"rgba(197,165,90,0.08)",border:"1px solid rgba(197,165,90,0.2)",color:GOLD,letterSpacing:0.5,fontWeight:700}}>{activeRuleCat === 'defaults' ? 'GLOBAL' : (SECTIONS.find(s=>s.key===activeRuleCat)?.label.toUpperCase() || activeRuleCat.toUpperCase())}</span>
+          </span>
+          <span style={{fontSize:14}}>{showParsingPanel?'▲':'▼'}</span>
+        </button>
+        {showParsingPanel && (
+          <div style={{background:"linear-gradient(145deg,#000,#0C1F0E)",borderRadius:"0 0 10px 10px",border:"1px solid rgba(197,165,90,0.15)",borderTop:"none",padding:20}}>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.6)",marginBottom:16,lineHeight:1.6}}>
+              Each category gets its own rule set. Pick a category below — all edits apply to that category only. <strong style={{color:GOLD}}>Global defaults</strong> holds the baseline; categories inherit unless overridden.
+            </div>
+
+            {/* Category tabs */}
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:20,padding:10,background:"rgba(0,0,0,0.3)",borderRadius:8,border:"1px solid rgba(255,255,255,0.04)"}}>
+              {[{key:'defaults', label:'Global defaults'}, ...SECTIONS].map(s => {
+                const active = activeRuleCat === s.key;
+                return (
+                  <button key={s.key} onClick={()=>setActiveRuleCat(s.key)} style={{padding:"8px 14px",borderRadius:6,border:`1px solid ${active?GOLD:"rgba(255,255,255,0.08)"}`,background:active?GOLD:"transparent",color:active?"#000":"rgba(255,255,255,0.6)",fontSize:11,fontWeight:700,letterSpacing:0.5,cursor:"pointer",textTransform:"uppercase"}}>{s.label}</button>
+                );
+              })}
+            </div>
+
+            {/* ── SKU Rules ── */}
+            <div style={{marginBottom:20,padding:14,background:"rgba(0,0,0,0.2)",borderRadius:8,border:"1px solid rgba(255,255,255,0.03)"}}>
+              <div style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:1.5,marginBottom:12,textTransform:"uppercase"}}>SKU Rules <span style={{color:"rgba(255,255,255,0.3)",fontWeight:400,textTransform:"none",letterSpacing:0.3,marginLeft:6}}>— strip tails to collapse exploded SKUs into root products</span></div>
+
+              {/* Species Suffixes */}
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:9,color:"rgba(255,255,255,0.6)",fontWeight:700,letterSpacing:1.5,marginBottom:8,textTransform:"uppercase"}}>Species Suffixes <span style={{color:"rgba(255,255,255,0.3)",fontWeight:400,textTransform:"none",letterSpacing:0.3,marginLeft:6}}>— code in SKU → species column</span></div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {(editCatRules.sku?.speciesSuffixes || []).map((s, idx) => {
+                    const off = s.enabled === false;
+                    return (
+                      <span key={idx} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"6px 11px",borderRadius:6,border:`1px solid ${off?"rgba(255,100,100,0.3)":"rgba(76,175,80,0.3)"}`,background:off?"rgba(255,100,100,0.06)":"rgba(76,175,80,0.08)"}}>
+                        <button onClick={()=>toggleSpeciesSuffix(activeRuleCat, idx)} style={{background:"none",border:0,padding:0,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
+                          <span style={{fontSize:11,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace",color:off?"#ff6b6b":"#4CAF50"}}>{s.pattern}</span>
+                          <span style={{fontSize:9,color:GOLD,fontStyle:"italic",letterSpacing:0.3}}>→ {s.mapsTo}</span>
+                          <span style={{fontSize:10,color:off?"#ff6b6b":"#4CAF50",fontWeight:700}}>{off?"OFF":"ON"}</span>
+                        </button>
+                        <button onClick={()=>removeSpeciesSuffix(activeRuleCat, idx)} style={{background:"none",border:0,color:"rgba(255,255,255,0.3)",cursor:"pointer",fontSize:12,padding:"0 2px",marginLeft:2}} onMouseEnter={e=>e.target.style.color="#ff6b6b"} onMouseLeave={e=>e.target.style.color="rgba(255,255,255,0.3)"}>×</button>
+                      </span>
+                    );
+                  })}
+                  <button onClick={()=>{
+                    const pat = prompt('Species suffix pattern (e.g. CH):');
+                    if (!pat) return;
+                    const col = prompt('Maps to which species column? (e.g. cherry):');
+                    if (!col) return;
+                    addSpeciesSuffix(activeRuleCat, pat, col);
+                  }} style={{padding:"6px 11px",borderRadius:6,border:"1px dashed rgba(197,165,90,0.3)",background:"transparent",color:GOLD,fontSize:11,fontWeight:700,cursor:"pointer",letterSpacing:0.5}}>+ Add</button>
+                  {(!editCatRules.sku?.speciesSuffixes || editCatRules.sku.speciesSuffixes.length===0) && <span style={{fontSize:11,color:"rgba(255,255,255,0.25)",fontStyle:"italic"}}>No species suffixes defined for this category</span>}
+                </div>
+              </div>
+
+              {/* Compound Suffixes */}
+              <div>
+                <div style={{fontSize:9,color:"rgba(255,255,255,0.6)",fontWeight:700,letterSpacing:1.5,marginBottom:8,textTransform:"uppercase"}}>Compound Suffixes <span style={{color:"rgba(255,255,255,0.3)",fontWeight:400,textTransform:"none",letterSpacing:0.3,marginLeft:6}}>— multi-token suffixes handled before species codes</span></div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {(editCatRules.sku?.compoundSuffixes || []).map((s, idx) => {
+                    const off = s.enabled === false;
+                    return (
+                      <span key={idx} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"6px 11px",borderRadius:6,border:`1px solid ${off?"rgba(255,100,100,0.3)":"rgba(76,175,80,0.3)"}`,background:off?"rgba(255,100,100,0.06)":"rgba(76,175,80,0.08)"}}>
+                        <button onClick={()=>toggleCompoundSuffix(activeRuleCat, idx)} style={{background:"none",border:0,padding:0,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
+                          <span style={{fontSize:11,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace",color:off?"#ff6b6b":"#4CAF50"}}>{s.pattern}</span>
+                          <span style={{fontSize:9,color:GOLD,fontStyle:"italic",letterSpacing:0.3}}>→ {s.mapsTo}</span>
+                          <span style={{fontSize:10,color:off?"#ff6b6b":"#4CAF50",fontWeight:700}}>{off?"OFF":"ON"}</span>
+                        </button>
+                        <button onClick={()=>removeCompoundSuffix(activeRuleCat, idx)} style={{background:"none",border:0,color:"rgba(255,255,255,0.3)",cursor:"pointer",fontSize:12,padding:"0 2px",marginLeft:2}}>×</button>
+                      </span>
+                    );
+                  })}
+                  <button onClick={()=>{
+                    const pat = prompt('Compound suffix pattern (e.g. POP-PRM):');
+                    if (!pat) return;
+                    const col = prompt('Maps to which species column? (e.g. poplar_primed):');
+                    if (!col) return;
+                    addCompoundSuffix(activeRuleCat, pat, col);
+                  }} style={{padding:"6px 11px",borderRadius:6,border:"1px dashed rgba(197,165,90,0.3)",background:"transparent",color:GOLD,fontSize:11,fontWeight:700,cursor:"pointer",letterSpacing:0.5}}>+ Add</button>
+                  {(!editCatRules.sku?.compoundSuffixes || editCatRules.sku.compoundSuffixes.length===0) && <span style={{fontSize:11,color:"rgba(255,255,255,0.25)",fontStyle:"italic"}}>No compound suffixes defined</span>}
+                </div>
               </div>
             </div>
 
-            {/* Variant Suffixes */}
-            <div style={{marginBottom:20}}>
-              <div style={{fontSize:11,color:GOLD,fontWeight:700,letterSpacing:1,marginBottom:10,textTransform:"uppercase"}}>Variant Suffixes <span style={{color:"rgba(255,255,255,0.3)",fontWeight:400,textTransform:"none"}}>— non-numeric tails like -EVEN, -LL, -NL</span></div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {Object.entries(suffixScan.variants).sort((a,b)=>b[1]-a[1]).map(([suffix,count]) => {
-                  const excluded = !!excludedVariants[suffix];
+            {/* ── Description Rules ── */}
+            <div style={{marginBottom:20,padding:14,background:"rgba(0,0,0,0.2)",borderRadius:8,border:"1px solid rgba(255,255,255,0.03)"}}>
+              <div style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:1.5,marginBottom:12,textTransform:"uppercase"}}>Description Rules <span style={{color:"rgba(255,255,255,0.3)",fontWeight:400,textTransform:"none",letterSpacing:0.3,marginLeft:6}}>— normalize the Description column</span></div>
+
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:9,color:"rgba(255,255,255,0.6)",fontWeight:700,letterSpacing:1.5,marginBottom:8,textTransform:"uppercase"}}>Strip Species Tokens <span style={{color:"rgba(255,255,255,0.3)",fontWeight:400,textTransform:"none",letterSpacing:0.3,marginLeft:6}}>— inline words removed from description</span></div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {(editCatRules.description?.stripSpeciesTokens || []).map((tok, idx) => (
+                    <span key={idx} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"6px 11px",borderRadius:6,border:"1px solid rgba(76,175,80,0.3)",background:"rgba(76,175,80,0.08)"}}>
+                      <span style={{fontSize:11,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace",color:"#4CAF50"}}>{tok}</span>
+                      <button onClick={()=>removeDescSpeciesToken(activeRuleCat, idx)} style={{background:"none",border:0,color:"rgba(255,255,255,0.3)",cursor:"pointer",fontSize:12}}>×</button>
+                    </span>
+                  ))}
+                  <button onClick={()=>{
+                    const tok = prompt('Species token to strip from description (e.g. CHERRY):');
+                    if (tok) addDescSpeciesToken(activeRuleCat, tok);
+                  }} style={{padding:"6px 11px",borderRadius:6,border:"1px dashed rgba(197,165,90,0.3)",background:"transparent",color:GOLD,fontSize:11,fontWeight:700,cursor:"pointer",letterSpacing:0.5}}>+ Add</button>
+                  {(!editCatRules.description?.stripSpeciesTokens || editCatRules.description.stripSpeciesTokens.length===0) && <span style={{fontSize:11,color:"rgba(255,255,255,0.25)",fontStyle:"italic"}}>No species tokens defined for this category</span>}
+                </div>
+              </div>
+
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:9,color:"rgba(255,255,255,0.6)",fontWeight:700,letterSpacing:1.5,marginBottom:8,textTransform:"uppercase"}}>Strip Length Tokens <span style={{color:"rgba(255,255,255,0.3)",fontWeight:400,textTransform:"none",letterSpacing:0.3,marginLeft:6}}>— "RL", "R/L", "16'" etc.</span></div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {(editCatRules.description?.stripLengthTokens || []).map((tok, idx) => (
+                    <span key={idx} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"6px 11px",borderRadius:6,border:"1px solid rgba(76,175,80,0.3)",background:"rgba(76,175,80,0.08)"}}>
+                      <span style={{fontSize:11,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace",color:"#4CAF50"}}>{tok}</span>
+                      <button onClick={()=>removeDescLengthToken(activeRuleCat, idx)} style={{background:"none",border:0,color:"rgba(255,255,255,0.3)",cursor:"pointer",fontSize:12}}>×</button>
+                    </span>
+                  ))}
+                  <button onClick={()=>{
+                    const tok = prompt('Length token to strip (e.g. RL):');
+                    if (tok) addDescLengthToken(activeRuleCat, tok);
+                  }} style={{padding:"6px 11px",borderRadius:6,border:"1px dashed rgba(197,165,90,0.3)",background:"transparent",color:GOLD,fontSize:11,fontWeight:700,cursor:"pointer",letterSpacing:0.5}}>+ Add</button>
+                </div>
+              </div>
+
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0"}}>
+                <div>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,0.8)",fontWeight:600}}>Strip parentheticals</div>
+                  <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:2}}>Remove substrate/finish notes in parens: "(PVC)", "(SD PINE)", etc.</div>
+                </div>
+                {(() => {
+                  const on = editCatRules.description?.stripParentheticals !== false;
                   return (
-                    <button key={suffix} onClick={()=>toggleVariant(suffix)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:6,border:`1px solid ${excluded?"rgba(255,100,100,0.3)":"rgba(76,175,80,0.3)"}`,background:excluded?"rgba(255,100,100,0.06)":"rgba(76,175,80,0.06)",cursor:"pointer",transition:"all 0.15s"}}>
-                      <span style={{fontSize:12,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace",color:excluded?"#ff6b6b":"#4CAF50"}}>{suffix}</span>
-                      <span style={{fontSize:9,color:"rgba(255,255,255,0.3)"}}>×{count}</span>
-                      <span style={{fontSize:10,color:excluded?"#ff6b6b":"#4CAF50"}}>{excluded?"OFF":"ON"}</span>
-                    </button>
+                    <button onClick={()=>toggleStripParens(activeRuleCat)} style={{padding:"5px 13px",borderRadius:5,border:`1px solid ${on?"rgba(76,175,80,0.3)":"rgba(255,100,100,0.3)"}`,background:on?"rgba(76,175,80,0.08)":"rgba(255,100,100,0.06)",color:on?"#4CAF50":"#ff6b6b",fontSize:10,fontWeight:700,cursor:"pointer"}}>{on?"ON":"OFF"}</button>
                   );
-                })}
-                {Object.keys(suffixScan.variants).length===0 && <span style={{fontSize:11,color:"rgba(255,255,255,0.25)"}}>No variant suffixes found in data</span>}
+                })()}
               </div>
             </div>
 
-            {/* Material Suffixes */}
-            <div>
-              <div style={{fontSize:11,color:GOLD,fontWeight:700,letterSpacing:1,marginBottom:10,textTransform:"uppercase"}}>Material Suffixes <span style={{color:"rgba(255,255,255,0.3)",fontWeight:400,textTransform:"none"}}>— substrate codes stripped to get root SKU</span></div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {Object.entries(suffixScan.materials).sort((a,b)=>b[1]-a[1]).map(([suffix,count]) => {
-                  const excluded = !!excludedMaterials[suffix];
-                  return (
-                    <button key={suffix} onClick={()=>toggleMaterial(suffix)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:6,border:`1px solid ${excluded?"rgba(255,100,100,0.3)":"rgba(76,175,80,0.3)"}`,background:excluded?"rgba(255,100,100,0.06)":"rgba(76,175,80,0.06)",cursor:"pointer",transition:"all 0.15s"}}>
-                      <span style={{fontSize:12,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace",color:excluded?"#ff6b6b":"#4CAF50"}}>{suffix}</span>
-                      <span style={{fontSize:9,color:"rgba(255,255,255,0.3)"}}>×{count}</span>
-                      <span style={{fontSize:10,color:excluded?"#ff6b6b":"#4CAF50"}}>{excluded?"OFF":"ON"}</span>
-                    </button>
-                  );
-                })}
+            {/* ── PG Minor → Column Mapping ── */}
+            {editCatRules.pgMinorToColumn && Object.keys(editCatRules.pgMinorToColumn).length > 0 && (
+              <div style={{marginBottom:20,padding:14,background:"rgba(0,0,0,0.2)",borderRadius:8,border:"1px solid rgba(255,255,255,0.03)"}}>
+                <div style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:1.5,marginBottom:8,textTransform:"uppercase"}}>PG Minor → Column <span style={{color:"rgba(255,255,255,0.3)",fontWeight:400,textTransform:"none",letterSpacing:0.3,marginLeft:6}}>— primary routing signal when SKU has no suffix</span></div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginBottom:10,lineHeight:1.5}}>
+                  Suffix trumps PG Minor. When SKU has no species suffix, the CSV's PG Minor maps to a species column here.
+                </div>
+                {Object.entries(editCatRules.pgMinorToColumn).map(([pg, col]) => (
+                  <div key={pg} style={{display:"grid",gridTemplateColumns:"1fr 20px 1fr 32px",gap:8,alignItems:"center",padding:"6px 10px",background:"rgba(0,0,0,0.3)",borderRadius:6,marginBottom:5,border:"1px solid rgba(255,255,255,0.03)"}}>
+                    <span style={{fontSize:11,fontFamily:"'IBM Plex Mono',monospace",color:"#fff",padding:"4px"}}>{pg}</span>
+                    <span style={{textAlign:"center",color:GOLD,fontFamily:"'IBM Plex Mono',monospace",fontSize:13}}>→</span>
+                    <span style={{fontSize:11,fontFamily:"'IBM Plex Mono',monospace",color:GOLD,padding:"4px"}}>{col}</span>
+                    <button onClick={()=>removePgMinorMap(activeRuleCat, pg)} style={{background:"none",border:0,color:"#ff6b6b",cursor:"pointer",opacity:0.4,fontSize:14}}>×</button>
+                  </div>
+                ))}
+                <button onClick={()=>{
+                  const pg = prompt('PG Minor value (e.g. CHERRY):');
+                  if (!pg) return;
+                  const col = prompt('Maps to which species column? (e.g. cherry):');
+                  if (!col) return;
+                  addPgMinorMap(activeRuleCat, pg, col);
+                }} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:6,border:"1px solid rgba(197,165,90,0.2)",background:"transparent",color:GOLD,fontSize:11,fontWeight:700,letterSpacing:0.5,cursor:"pointer",marginTop:8}}>+ Add mapping</button>
               </div>
-            </div>
+            )}
+
+            {/* ── Conflicts surfaced from last parse ── */}
+            {parseStats?.conflicts && parseStats.conflicts.length > 0 && (
+              <div style={{marginTop:20,padding:14,background:"rgba(255,165,90,0.04)",borderRadius:8,border:"1px solid rgba(255,165,90,0.2)"}}>
+                <div style={{fontSize:10,color:"#ffa55a",fontWeight:700,letterSpacing:1.5,marginBottom:8,textTransform:"uppercase"}}>⚠ Conflicts <span style={{color:"rgba(255,255,255,0.35)",fontWeight:400,textTransform:"none",letterSpacing:0.3,marginLeft:6}}>— suffix vs PG Minor disagreement (suffix wins)</span></div>
+                <div style={{maxHeight:240,overflowY:"auto"}}>
+                  {parseStats.conflicts.slice(0, 50).map((c, i) => (
+                    <div key={i} style={{fontSize:10,fontFamily:"'IBM Plex Mono',monospace",color:"rgba(255,255,255,0.7)",padding:"5px 8px",borderBottom:"1px solid rgba(255,255,255,0.03)"}}>
+                      <span style={{color:GOLD}}>{c.sku}</span> <span style={{color:"rgba(255,255,255,0.35)"}}>({c.pgMajor}|{c.pgMinor})</span>
+                      &nbsp;&nbsp; suffix→<span style={{color:"#4CAF50"}}>{c.bySuffix}</span>
+                      &nbsp;&nbsp; pgMinor→<span style={{color:"#ff6b6b"}}>{c.byPgMinor}</span>
+                      &nbsp;&nbsp; resolved to <span style={{color:"#4CAF50",fontWeight:700}}>{c.resolved}</span>
+                    </div>
+                  ))}
+                  {parseStats.conflicts.length > 50 && <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",padding:"6px 8px"}}>+ {parseStats.conflicts.length - 50} more…</div>}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
