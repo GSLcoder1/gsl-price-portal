@@ -979,8 +979,8 @@ function Lookup({mult, allItems, pricingLabel, levelVis, showAllPriceLevelsBtn, 
                       {allPricesData.mats.map(m => (
                         <th key={m.col} colSpan={2} style={{padding:"6px 6px 8px",textAlign:"center",borderBottom:"2px solid rgba(197,165,90,0.3)",borderLeft:"1px solid rgba(255,255,255,0.06)"}}>
                           <span style={{display:"inline-block",padding:"4px 10px",borderRadius:4,background:m.ms.bg,color:m.ms.color,fontSize:11,fontWeight:800,border:"1px solid "+m.ms.border,minWidth:80}}>{m.name}</span>
-                          {m.unitQty > 0 && <div style={{fontSize:11,color:GOLD,fontWeight:800,marginTop:4}}>Unit Qty: <span style={{color:"#fff"}}>{m.unitQty+" "+m.unitUom}</span></div>}
-                          {m.lengths && <div style={{fontSize:11,color:GOLD,fontWeight:800,marginTop:1}}>Lengths: <span style={{color:"#fff"}}>{m.lengths}</span></div>}
+                          <div style={{fontSize:11,color:GOLD,fontWeight:800,marginTop:4}}>Unit Qty: <span style={{color:m.unitQty>0?"#fff":"rgba(255,255,255,0.35)"}}>{m.unitQty>0?(m.unitQty+" "+m.unitUom):"\u2014"}</span></div>
+                          <div style={{fontSize:11,color:GOLD,fontWeight:800,marginTop:1}}>Lengths: <span style={{color:m.lengths?"#fff":"rgba(255,255,255,0.35)"}}>{m.lengths||"\u2014"}</span></div>
                         </th>
                       ))}
                     </tr>
