@@ -812,16 +812,16 @@ function Lookup({mult, allItems, pricingLabel, levelVis, showAllPriceLevelsBtn, 
         return [found.sku, ...filtered].slice(0, 6);
       });
     }
-    /* After the result renders, position the lookup card below the sticky header
-       so it isn't hidden behind the tile strip when Safari restores scroll. */
+    /* After the result renders, position the lookup card below the sticky header.
+       Use scrollIntoView with scrollMarginTop set on the element so the browser
+       handles sticky-header offset natively without fighting Safari's own scroll
+       adjustments. Longer delay so iOS keyboard animation finishes first. */
     setTimeout(() => {
       if (lookupCardRef.current) {
-        const rect = lookupCardRef.current.getBoundingClientRect();
-        const targetTop = 230; /* clears sticky header (~218px) with a small buffer */
-        const delta = rect.top - targetTop;
-        if (Math.abs(delta) > 4) window.scrollBy({top: delta, behavior: "smooth"});
+        lookupCardRef.current.style.scrollMarginTop = "240px";
+        lookupCardRef.current.scrollIntoView({block: "start", behavior: "auto"});
       }
-    }, 80);
+    }, 350);
   }, [q, allItems]);
   const clearResult = () => { setRes(null); setQ(""); setShowAllPrices(false); };
 
@@ -1772,8 +1772,9 @@ function SectionCard({ section, isActive, compact, onClick }) {
           backgroundImage: `url(${hero})`,
           backgroundSize: "cover",
           backgroundPosition: "center",
-          opacity: isActive ? 1 : 0.78,
-          transition: "opacity 0.2s",
+          opacity: isActive ? 1 : 0.45,
+          filter: isActive ? "none" : "saturate(0.7) brightness(0.85)",
+          transition: "opacity 0.2s, filter 0.2s",
           transform: (section.key === "panels_sheets" || section.key === "door_jambs") ? "scaleX(-1)" : "none",
         }}/>
       ) : (
@@ -2216,7 +2217,7 @@ function App() {
         )}
       </div>
 
-      <div style={{maxWidth:1500,margin:"0 auto",padding:"60px 24px 20px"}}>
+      <div style={{maxWidth:1500,margin:"0 auto",padding:"108px 24px 20px"}}>
         {page === "admin" && <AdminPanel user={user} tiers={tiers} setTiers={setTiers} team={team} setTeam={setTeam}/>}
         {page === "productadmin" && <ProductAdmin levelVis={levelVis} setLevelVis={setLevelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn} setShowAllPriceLevelsBtn={setShowAllPriceLevelsBtn} hiddenSkuSet={hiddenSkuSet} onVisibilityChange={(hidden) => setHiddenSkuSet(new Set(hidden))}/>}
 
