@@ -3987,10 +3987,11 @@ function SectionVisualSelector({ sec, setSec, setS4sFilter, effectiveCat }) {
    display with tooltip legend, only surfaced when at least one override
    exists in the system).
    =========================================================================*/
-function CustomerPricingAdmin() {
+function CustomerPricingAdmin({effectiveCat}) {
   /* Hooks (useState/useEffect/useMemo/useRef) are globally destructured at
      the top of the script — we just use them directly, matching the
      convention in AdminPanel and ProductAdmin. */
+  const liveCat = effectiveCat || {};
 
   /* ───────── State: customer master list ───────── */
   const [customerList, setCustomerList] = useState(() => loadCustomerList());
@@ -4174,6 +4175,194 @@ function CustomerPricingAdmin() {
     setImportStats(null);
   };
 
+  /* ═════════════════════════════════════════════════════════════════════
+     Stage 1B — Pricing Entry
+     ─────────────────────────────────────────────────────────────────────
+     State, lookups, and handlers for the Card 3 override entry form.
+     Reads from the published Mouldings catalog (effectiveCat.mouldings)
+     to drive root-SKU autocomplete, dependent substrate selection, UOM
+     auto-population, and the 2× Level 1 guardrail.
+     ═════════════════════════════════════════════════════════════════════ */
+
+  /* Persisted overrides map: { [customerKey]: { [mouldingOverrideKey]: {...} } } */
+  const [overrides, setOverrides] = useState(() => loadCustomerPricing());
+
+  /* Entry-form state. rootSku holds the typed text; once a catalog row is
+     locked-in, substrate populates from that row's available mats. */
+  const [rsInput, setRsInput]         = useState('');
+  const [rsFocused, setRsFocused]     = useState(false);
+  const [substrate, setSubstrate]     = useState('');
+  const [theirSku, setTheirSku]       = useState('');
+  const [theirCost, setTheirCost]     = useState('');
+  const [editingKey, setEditingKey]   = useState(null);   // override key being edited, or null for new
+  const [formError, setFormError]     = useState(null);
+  const rsBoxRef                      = useRef(null);
+
+  /* Index the Mouldings catalog once for fast root-SKU lookup. Each row
+     is { sku, desc, mats }. We preserve the original tuple shape so the
+     UOM/Level-1 lookup later is just a direct key access. */
+  const mouldingIndex = useMemo(() => {
+    const tuples = (liveCat.mouldings) || [];
+    return tuples.map(t => ({ sku: t[0], desc: t[1], mats: t[2] }));
+  }, [liveCat]);
+
+  /* Map of Mouldings column keys → display names, pulled from the
+     SECTIONS config at the top of the file. Kept local so this component
+     isn't coupled to the export shape. */
+  const SUBSTRATE_LABELS = {
+    solid_pine:'Solid Pine', primed_pine:'Primed Pine', mdf:'MDF',
+    poplar_solid:'Poplar', poplar_fj_primed:'Poplar FJ',
+    white_oak:'White Oak', red_oak:'Red Oak', pvc:'PVC',
+    flex:'Flex', fir:'Fir', syp:'SYP',
+  };
+  const substrateLabel = (k) => SUBSTRATE_LABELS[k] || k;
+
+  /* Autocomplete matches — case-insensitive startsWith is the primary
+     sort key (best for power users who know the SKU prefix), falling
+     back to substring match further down the list. Capped at 8 to keep
+     the dropdown readable. */
+  const rsMatches = useMemo(() => {
+    const q = rsInput.trim().toUpperCase();
+    if (!q) return [];
+    const starts = [], contains = [];
+    for (const row of mouldingIndex) {
+      const sku = (row.sku || '').toUpperCase();
+      if (!sku) continue;
+      if (sku.startsWith(q)) starts.push(row);
+      else if (sku.includes(q) || (row.desc||'').toUpperCase().includes(q)) contains.push(row);
+      if (starts.length >= 8) break;
+    }
+    return [...starts, ...contains].slice(0, 8);
+  }, [rsInput, mouldingIndex]);
+
+  /* The exact catalog row matching the current rsInput (uppercase). This
+     is what drives the substrate dropdown and UOM lookup — if null, the
+     user hasn't picked a valid root SKU yet. */
+  const matchedRow = useMemo(() => {
+    const q = rsInput.trim().toUpperCase();
+    if (!q) return null;
+    return mouldingIndex.find(r => (r.sku||'').toUpperCase() === q) || null;
+  }, [rsInput, mouldingIndex]);
+
+  /* Substrates that actually exist for the matched root SKU, in the
+     canonical SECTIONS order (so the dropdown reads Solid Pine → Primed
+     → MDF → … rather than hash order). */
+  const availableSubstrates = useMemo(() => {
+    if (!matchedRow) return [];
+    const order = ['solid_pine','primed_pine','mdf','poplar_solid','poplar_fj_primed','white_oak','red_oak','pvc','flex','fir','syp'];
+    return order.filter(k => matchedRow.mats && matchedRow.mats[k]);
+  }, [matchedRow]);
+
+  /* When the root SKU changes (either typed or picked), reset substrate
+     if it's no longer valid for the new row. */
+  useEffect(() => {
+    if (substrate && !availableSubstrates.includes(substrate)) setSubstrate('');
+  }, [availableSubstrates.join('|')]);   // eslint-disable-line
+
+  /* Current (UOM, Level 1) for the matched row+substrate pair. */
+  const currentUom   = (matchedRow && substrate && matchedRow.mats[substrate]) ? (matchedRow.mats[substrate].u || '') : '';
+  const currentLevel1 = (matchedRow && substrate && matchedRow.mats[substrate]) ? Number(matchedRow.mats[substrate].p || 0) : 0;
+
+  /* Customer key for the current ship-to (null if none selected). Used
+     as the top-level key in the overrides map. */
+  const custKey = selectedShipTo
+    ? makeCustomerKey(selectedShipTo.branch, selectedShipTo.custId, selectedShipTo.shipToNumber)
+    : null;
+
+  /* Flat list of this customer's existing overrides, enriched with
+     catalog metadata for rendering, sorted most-recently-updated first. */
+  const customerOverrides = useMemo(() => {
+    if (!custKey || !overrides[custKey]) return [];
+    const entries = Object.entries(overrides[custKey]);
+    return entries.map(([key, rec]) => {
+      const [rootSku, sub] = key.split('::');
+      const row = mouldingIndex.find(r => (r.sku||'').toUpperCase() === (rootSku||'').toUpperCase());
+      const mat = row && row.mats ? row.mats[sub] : null;
+      return {
+        key, rootSku, substrate: sub,
+        theirSku: rec.theirSku || '',
+        theirCost: Number(rec.theirCost || 0),
+        updatedAt: rec.updatedAt || '',
+        uom: mat ? (mat.u || '') : '',
+        level1: mat ? Number(mat.p || 0) : 0,
+        orphaned: !mat,   // true if catalog no longer has this row+substrate
+      };
+    }).sort((a,b) => (b.updatedAt||'').localeCompare(a.updatedAt||''));
+  }, [custKey, overrides, mouldingIndex]);
+
+  /* Check whether proposed theirSku collides with an existing root SKU
+     in the catalog. A collision isn't blocking — we just flag it. */
+  const theirSkuCollision = useMemo(() => {
+    const q = (theirSku||'').trim().toUpperCase();
+    if (!q) return false;
+    return mouldingIndex.some(r => (r.sku||'').toUpperCase() === q);
+  }, [theirSku, mouldingIndex]);
+
+  const resetForm = () => {
+    setRsInput(''); setSubstrate(''); setTheirSku(''); setTheirCost('');
+    setEditingKey(null); setFormError(null); setRsFocused(false);
+  };
+
+  /* Save (add or update). Validation order matters: required fields →
+     catalog lookup → 2× guardrail. theirSku collision is surfaced inline
+     but never blocks save. */
+  const saveOverride = () => {
+    setFormError(null);
+    if (!custKey) { setFormError('Select a ship-to in the Customer Selector first.'); return; }
+    if (!matchedRow) { setFormError('Pick a root SKU from the list.'); return; }
+    if (!substrate) { setFormError('Select a substrate.'); return; }
+    const cleanSku = (theirSku || '').trim();
+    const costStr = (theirCost || '').toString().trim();
+    if (!cleanSku && !costStr) { setFormError('Enter at least Their SKU or Their Cost.'); return; }
+    let cost = null;
+    if (costStr) {
+      const n = Number(costStr);
+      if (!isFinite(n) || n < 0) { setFormError('Their Cost must be a non-negative number.'); return; }
+      /* Hard 2× guardrail. The reference price is shown in the form so
+         the user understands why the block fired. Zero-cost entries skip
+         the guardrail since 0 is never 2× anything meaningful. */
+      if (n > 0 && currentLevel1 > 0 && n >= 2 * currentLevel1) {
+        setFormError(`Their Cost ($${n.toFixed(2)}) is ≥ 2× Level 1 ($${currentLevel1.toFixed(2)}). Double-check — blocked as a safety guardrail.`);
+        return;
+      }
+      cost = n;
+    }
+    const oKey = makeMouldingOverrideKey(matchedRow.sku, substrate);
+    const next = {...overrides};
+    if (!next[custKey]) next[custKey] = {};
+    next[custKey][oKey] = {
+      theirSku: cleanSku || null,
+      theirCost: cost,
+      updatedAt: new Date().toISOString(),
+    };
+    saveCustomerPricing(next);
+    setOverrides(next);
+    resetForm();
+  };
+
+  const editOverride = (row) => {
+    setRsInput(row.rootSku);
+    setSubstrate(row.substrate);
+    setTheirSku(row.theirSku || '');
+    setTheirCost(row.theirCost ? String(row.theirCost) : '');
+    setEditingKey(row.key);
+    setFormError(null);
+    setRsFocused(false);
+  };
+
+  const deleteOverride = (row) => {
+    if (!custKey) return;
+    if (!confirm(`Delete override for ${row.rootSku} (${substrateLabel(row.substrate)})?`)) return;
+    const next = {...overrides};
+    if (next[custKey]) {
+      delete next[custKey][row.key];
+      if (Object.keys(next[custKey]).length === 0) delete next[custKey];
+    }
+    saveCustomerPricing(next);
+    setOverrides(next);
+    if (editingKey === row.key) resetForm();
+  };
+
   /* ───────── Rendering ───────── */
   const cardStyle = {background:"rgba(197,165,90,0.03)",border:"1px solid rgba(197,165,90,0.18)",borderRadius:8,padding:20,marginBottom:16};
   const cardHeaderStyle = {fontSize:12,fontWeight:900,color:GOLD,letterSpacing:1.5,marginBottom:4,textTransform:'uppercase'};
@@ -4196,7 +4385,7 @@ function CustomerPricingAdmin() {
             Overrides replace Level 1 on the customer-facing portal and display in green with the customer's markup applied.
           </div>
         </div>
-        <span style={{fontSize:9,padding:"3px 8px",borderRadius:10,background:"rgba(197,165,90,0.08)",border:"1px solid rgba(197,165,90,0.2)",color:GOLD,letterSpacing:0.8,fontWeight:700}}>v32 · STAGE 1A</span>
+        <span style={{fontSize:9,padding:"3px 8px",borderRadius:10,background:"rgba(197,165,90,0.08)",border:"1px solid rgba(197,165,90,0.2)",color:GOLD,letterSpacing:0.8,fontWeight:700}}>v32 · STAGE 1B</span>
       </div>
 
       {/* ─── CARD 1: CUSTOMER MASTER LIST ─── */}
@@ -4365,27 +4554,208 @@ function CustomerPricingAdmin() {
         )}
       </div>
 
-      {/* ─── CARD 3: PRICING ENTRY (STAGE 1B PLACEHOLDER) ─── */}
-      <div style={{...cardStyle,opacity:selectedShipTo?1:0.6}}>
+      {/* ─── CARD 3: PRICING ENTRY (STAGE 1B) ─── */}
+      <div style={{...cardStyle,opacity:selectedShipTo?1:0.5,pointerEvents:selectedShipTo?"auto":"none"}}>
         <div style={cardHeaderStyle}>Pricing Overrides · Mouldings</div>
         <div style={cardSublineStyle}>
-          Enter a root SKU + substrate to look up the unit of measure, then record this customer's cost and optional cross-reference SKU. Each override replaces Level 1 on the portal for this customer.
+          Enter a root SKU — the substrate dropdown will offer only the substrates that exist for that SKU in the catalog. UOM and Level 1 populate automatically. Each override replaces Level 1 on the portal for this customer.
         </div>
 
-        <div style={{padding:"40px 20px",textAlign:"center",background:"rgba(0,0,0,0.2)",border:"1px dashed rgba(197,165,90,0.2)",borderRadius:6}}>
-          <div style={{fontSize:11,fontWeight:700,color:GOLD,letterSpacing:1,marginBottom:8,textTransform:"uppercase"}}>Coming next · Stage 1B</div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",lineHeight:1.6,maxWidth:540,margin:"0 auto"}}>
-            The override entry grid lands in the next build. It will auto-populate the unit of measure when you enter a root SKU + substrate (e.g. <span style={{color:GOLD,fontFamily:"'IBM Plex Mono',monospace"}}>UC41 + PRF → LF</span>), accept optional cross-reference SKU and required cost, and persist to the selected customer's override map.
+        {!selectedShipTo && (
+          <div style={{padding:"20px",textAlign:"center",fontSize:11,color:"rgba(255,255,255,0.4)",background:"rgba(0,0,0,0.15)",border:"1px dashed rgba(197,165,90,0.15)",borderRadius:6}}>
+            Select a ship-to above to add or edit overrides.
           </div>
-          {selectedShipTo && (
-            <div style={{marginTop:14,fontSize:10,color:"rgba(255,255,255,0.4)"}}>
-              Would save under:{" "}
-              <span style={{color:GOLD,fontFamily:"'IBM Plex Mono',monospace"}}>
-                {makeCustomerKey(selectedShipTo.branch, selectedShipTo.custId, selectedShipTo.shipToNumber)}
-              </span>
+        )}
+
+        {selectedShipTo && (
+          <>
+            {/* Form row */}
+            <div style={{display:"grid",gridTemplateColumns:"1.6fr 1.4fr 1fr 1fr 1fr",gap:12,alignItems:"end",marginBottom:14}}>
+              {/* Root SKU autocomplete */}
+              <div style={{position:"relative"}} ref={rsBoxRef}>
+                <label style={labelStyle}>Root SKU</label>
+                <input
+                  type="text"
+                  value={rsInput}
+                  onChange={e => { setRsInput(e.target.value.toUpperCase()); setRsFocused(true); }}
+                  onFocus={() => setRsFocused(true)}
+                  onBlur={() => setTimeout(() => setRsFocused(false), 150)}
+                  placeholder="Start typing e.g. UC41…"
+                  style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'IBM Plex Mono',monospace"}}
+                />
+                {rsFocused && rsMatches.length > 0 && (
+                  <div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:2,background:"#1a1a1a",border:"1px solid rgba(197,165,90,0.3)",borderRadius:4,maxHeight:260,overflowY:"auto",zIndex:20,boxShadow:"0 8px 20px rgba(0,0,0,0.4)"}}>
+                    {rsMatches.map(r => {
+                      const subs = Object.keys(r.mats || {});
+                      return (
+                        <div
+                          key={r.sku}
+                          onMouseDown={() => { setRsInput(r.sku.toUpperCase()); setRsFocused(false); }}
+                          style={{padding:"8px 10px",cursor:"pointer",borderBottom:"1px solid rgba(197,165,90,0.08)",fontSize:11}}
+                          onMouseEnter={e => e.currentTarget.style.background="rgba(197,165,90,0.1)"}
+                          onMouseLeave={e => e.currentTarget.style.background="transparent"}
+                        >
+                          <div style={{fontFamily:"'IBM Plex Mono',monospace",color:GOLD,fontWeight:700}}>{r.sku}</div>
+                          <div style={{fontSize:9,color:"rgba(255,255,255,0.5)",marginTop:2,lineHeight:1.3}}>{r.desc}</div>
+                          <div style={{fontSize:8,color:"rgba(197,165,90,0.55)",marginTop:3,letterSpacing:0.5}}>
+                            {subs.map(s => substrateLabel(s)).join(" · ")}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Substrate (dependent) */}
+              <div>
+                <label style={labelStyle}>Substrate</label>
+                <select
+                  value={substrate}
+                  onChange={e => setSubstrate(e.target.value)}
+                  disabled={!matchedRow}
+                  style={{...inputStyle,width:"100%",boxSizing:"border-box",opacity:matchedRow?1:0.5,cursor:matchedRow?"pointer":"not-allowed"}}
+                >
+                  <option value="">{matchedRow ? "— Select substrate —" : "— Pick a root SKU first —"}</option>
+                  {availableSubstrates.map(k => (
+                    <option key={k} value={k}>{substrateLabel(k)}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* UOM (read-only) */}
+              <div>
+                <label style={labelStyle}>UOM</label>
+                <div style={{...inputStyle,width:"100%",boxSizing:"border-box",background:"rgba(0,0,0,0.45)",color:currentUom?GOLD:"rgba(255,255,255,0.3)",fontFamily:"'IBM Plex Mono',monospace",fontWeight:700,textAlign:"center"}}>
+                  {currentUom || "—"}
+                </div>
+              </div>
+
+              {/* Their SKU */}
+              <div>
+                <label style={labelStyle}>Their SKU <span style={{color:"rgba(255,255,255,0.3)",fontWeight:400,textTransform:"none"}}>(opt)</span></label>
+                <input
+                  type="text"
+                  value={theirSku}
+                  onChange={e => setTheirSku(e.target.value.toUpperCase())}
+                  placeholder="—"
+                  style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'IBM Plex Mono',monospace"}}
+                />
+              </div>
+
+              {/* Their Cost */}
+              <div>
+                <label style={labelStyle}>Their Cost <span style={{color:"rgba(255,255,255,0.3)",fontWeight:400,textTransform:"none"}}>($)</span></label>
+                <input
+                  type="number"
+                  value={theirCost}
+                  onChange={e => setTheirCost(e.target.value)}
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'IBM Plex Mono',monospace"}}
+                />
+              </div>
             </div>
-          )}
-        </div>
+
+            {/* Reference line + inline warnings */}
+            {matchedRow && substrate && (
+              <div style={{display:"flex",gap:14,alignItems:"center",marginBottom:12,fontSize:10,color:"rgba(255,255,255,0.55)",flexWrap:"wrap"}}>
+                <span>Level 1 reference: <span style={{color:GOLD,fontFamily:"'IBM Plex Mono',monospace",fontWeight:700}}>${currentLevel1.toFixed(2)}/{currentUom}</span></span>
+                <span style={{color:"rgba(255,255,255,0.3)"}}>·</span>
+                <span>Guardrail blocks Their Cost ≥ <span style={{color:"rgba(255,180,120,0.9)",fontFamily:"'IBM Plex Mono',monospace"}}>${(currentLevel1*2).toFixed(2)}</span></span>
+                {theirSkuCollision && (
+                  <>
+                    <span style={{color:"rgba(255,255,255,0.3)"}}>·</span>
+                    <span style={{color:"rgba(255,200,100,0.9)"}}>⚠ Their SKU matches an existing catalog root SKU</span>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Error banner */}
+            {formError && (
+              <div style={{padding:"10px 12px",background:"rgba(220,80,80,0.12)",border:"1px solid rgba(220,80,80,0.35)",borderRadius:4,fontSize:11,color:"#ffb0b0",marginBottom:12}}>
+                {formError}
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div style={{display:"flex",gap:10,marginBottom:18}}>
+              <button
+                onClick={saveOverride}
+                style={{padding:"9px 18px",background:GOLD,color:"#1a1a1a",border:"none",borderRadius:4,fontSize:11,fontWeight:900,letterSpacing:1,textTransform:"uppercase",cursor:"pointer"}}
+              >
+                {editingKey ? "Update Override" : "Add Override"}
+              </button>
+              {(rsInput || substrate || theirSku || theirCost || editingKey) && (
+                <button
+                  onClick={resetForm}
+                  style={{padding:"9px 18px",background:"transparent",color:"rgba(255,255,255,0.65)",border:"1px solid rgba(197,165,90,0.25)",borderRadius:4,fontSize:11,fontWeight:700,letterSpacing:1,textTransform:"uppercase",cursor:"pointer"}}
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+
+            {/* Existing overrides list */}
+            <div style={{borderTop:"1px solid rgba(197,165,90,0.15)",paddingTop:14}}>
+              <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:10}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:1.2,color:"rgba(197,165,90,0.7)",textTransform:"uppercase"}}>
+                  This Customer's Overrides
+                </div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.4)"}}>
+                  {customerOverrides.length} {customerOverrides.length === 1 ? "entry" : "entries"} · most recent first
+                </div>
+              </div>
+
+              {customerOverrides.length === 0 ? (
+                <div style={{padding:"18px",textAlign:"center",fontSize:11,color:"rgba(255,255,255,0.35)",background:"rgba(0,0,0,0.15)",border:"1px dashed rgba(197,165,90,0.12)",borderRadius:4}}>
+                  No overrides yet for this ship-to.
+                </div>
+              ) : (
+                <div style={{background:"rgba(0,0,0,0.2)",border:"1px solid rgba(197,165,90,0.12)",borderRadius:4,overflow:"hidden"}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1.1fr 1.2fr 0.5fr 1.1fr 0.9fr 0.9fr 1fr",gap:10,padding:"8px 12px",background:"rgba(197,165,90,0.06)",fontSize:9,fontWeight:700,letterSpacing:1,color:"rgba(197,165,90,0.75)",textTransform:"uppercase",borderBottom:"1px solid rgba(197,165,90,0.12)"}}>
+                    <div>Root SKU</div>
+                    <div>Substrate</div>
+                    <div>UOM</div>
+                    <div>Their SKU</div>
+                    <div style={{textAlign:"right"}}>Their Cost</div>
+                    <div style={{textAlign:"right"}}>Level 1</div>
+                    <div style={{textAlign:"right"}}>Actions</div>
+                  </div>
+                  {customerOverrides.map(row => (
+                    <div key={row.key} style={{display:"grid",gridTemplateColumns:"1.1fr 1.2fr 0.5fr 1.1fr 0.9fr 0.9fr 1fr",gap:10,padding:"9px 12px",fontSize:11,borderBottom:"1px solid rgba(197,165,90,0.06)",alignItems:"center",background:editingKey===row.key?"rgba(197,165,90,0.07)":"transparent"}}>
+                      <div style={{fontFamily:"'IBM Plex Mono',monospace",color:GOLD,fontWeight:700}}>
+                        {row.rootSku}
+                        {row.orphaned && <span title="This SKU/substrate no longer exists in the published catalog" style={{marginLeft:6,fontSize:9,color:"rgba(255,180,100,0.9)"}}>⚠</span>}
+                      </div>
+                      <div style={{color:"rgba(255,255,255,0.8)"}}>{substrateLabel(row.substrate)}</div>
+                      <div style={{fontFamily:"'IBM Plex Mono',monospace",color:"rgba(255,255,255,0.65)"}}>{row.uom || "—"}</div>
+                      <div style={{fontFamily:"'IBM Plex Mono',monospace",color:row.theirSku?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.3)"}}>{row.theirSku || "—"}</div>
+                      <div style={{textAlign:"right",fontFamily:"'IBM Plex Mono',monospace",color:row.theirCost?"rgba(140,220,140,0.95)":"rgba(255,255,255,0.3)",fontWeight:700}}>
+                        {row.theirCost ? `$${row.theirCost.toFixed(2)}` : "—"}
+                      </div>
+                      <div style={{textAlign:"right",fontFamily:"'IBM Plex Mono',monospace",color:"rgba(255,255,255,0.45)"}}>
+                        {row.level1 ? `$${row.level1.toFixed(2)}` : "—"}
+                      </div>
+                      <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
+                        <button
+                          onClick={() => editOverride(row)}
+                          style={{padding:"4px 10px",background:"transparent",color:GOLD,border:"1px solid rgba(197,165,90,0.3)",borderRadius:3,fontSize:9,fontWeight:700,letterSpacing:0.8,textTransform:"uppercase",cursor:"pointer"}}
+                        >Edit</button>
+                        <button
+                          onClick={() => deleteOverride(row)}
+                          style={{padding:"4px 10px",background:"transparent",color:"rgba(220,120,120,0.9)",border:"1px solid rgba(220,120,120,0.3)",borderRadius:3,fontSize:9,fontWeight:700,letterSpacing:0.8,textTransform:"uppercase",cursor:"pointer"}}
+                        >Del</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -4786,8 +5156,9 @@ function App() {
       <div style={{maxWidth:1500,margin:"0 auto",padding:"108px 24px 20px"}}>
         {page === "admin" && <AdminPanel user={user} tiers={tiers} setTiers={setTiers} team={team} setTeam={setTeam}/>}
         {page === "productadmin" && <ProductAdmin levelVis={levelVis} setLevelVis={setLevelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn} setShowAllPriceLevelsBtn={setShowAllPriceLevelsBtn} hiddenSkuSet={hiddenSkuSet} onVisibilityChange={(hidden) => setHiddenSkuSet(new Set(hidden))} productOverrides={productOverrides} setProductOverrides={updateProductOverrides} effectiveCat={effectiveCat} publishedMeta={publishedMeta} onPublish={publishCatalog} onRevertPublished={revertPublishedCatalog}/>}
-        {/* v32: Customer Pricing admin page. No props needed — it manages its own state via storage helpers. */}
-        {page === "customerpricing" && <CustomerPricingAdmin/>}
+        {/* v32: Customer Pricing admin page. Stage 1B reads the published Mouldings
+           catalog for SKU/substrate autocomplete and UOM/Level 1 lookup. */}
+        {page === "customerpricing" && <CustomerPricingAdmin effectiveCat={effectiveCat}/>}
 
         {page === "portal" && (<>
           {/* PRICING BAR — above lookup */}
