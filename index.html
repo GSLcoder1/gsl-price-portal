@@ -186,6 +186,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<!-- v32: SheetJS (xlsx parser) for Customer Master List import -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script type="text/babel">
 const { useState, useMemo, useCallback, useEffect, useRef } = React;
 
@@ -410,6 +412,116 @@ function clearPublishedCatalog() {
     localStorage.removeItem(PUBLISHED_META_KEY);
     return true;
   } catch { return false; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   v32 · CUSTOMER MASTER LIST + CUSTOMER PRICING OVERRIDES
+   ═══════════════════════════════════════════════════════════════════════
+   Two separate stores:
+
+     gsl_customer_list      Customer master data imported from an ERP
+                            export (Branch / Cust ID / Ship To Number /
+                            Ship To Name / address). This is the universe
+                            of selectable customers for pricing overrides.
+
+     gsl_customer_pricing   Per-customer, per-SKU+substrate cost overrides
+                            and optional cross-reference SKUs. Only
+                            applicable to the Mouldings section. When an
+                            override is present, it REPLACES Level 1 for
+                            that customer on the front end.
+
+   Customer list shape:
+     { rows: [
+         { branch, custId, shipToNumber, shipToName, customerName,
+           address1, address2, city, state, zip }
+       ],
+       importedAt: ISO timestamp,
+       sourceFilename: "..."  }
+
+   Customer pricing shape:
+     { [customerKey]: {
+         [mouldingOverrideKey]: {
+           theirSku: "RBS41" | null,
+           theirCost: 3.50 | null,
+           updatedAt: ISO
+         }
+       } }
+     where
+       customerKey        = `${branch}::${custId}::${shipToNumber}`
+       mouldingOverrideKey = `${rootSku}::${substrate}`     (e.g. "UC41::PRF")
+   =========================================================================*/
+const CUSTOMER_LIST_KEY      = "gsl_customer_list";
+const CUSTOMER_PRICING_KEY   = "gsl_customer_pricing";
+
+function loadCustomerList() {
+  try {
+    const raw = localStorage.getItem(CUSTOMER_LIST_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+function saveCustomerList(list) {
+  try { localStorage.setItem(CUSTOMER_LIST_KEY, JSON.stringify(list)); return true; }
+  catch (e) { console.error("saveCustomerList", e); return false; }
+}
+function clearCustomerList() {
+  try { localStorage.removeItem(CUSTOMER_LIST_KEY); return true; } catch { return false; }
+}
+
+function loadCustomerPricing() {
+  try {
+    const raw = localStorage.getItem(CUSTOMER_PRICING_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+function saveCustomerPricing(overrides) {
+  try { localStorage.setItem(CUSTOMER_PRICING_KEY, JSON.stringify(overrides)); return true; }
+  catch (e) { console.error("saveCustomerPricing", e); return false; }
+}
+
+/* Compose / decompose the customerKey so callers never hand-roll the
+   separator. branch + custId + shipToNumber uniquely identifies a ship-to
+   location across the entire customer universe. */
+function makeCustomerKey(branch, custId, shipToNumber) {
+  return `${branch||''}::${custId||''}::${shipToNumber||''}`;
+}
+function parseCustomerKey(key) {
+  const [branch, custId, shipToNumber] = (key||'').split('::');
+  return { branch, custId, shipToNumber };
+}
+function makeMouldingOverrideKey(rootSku, substrate) {
+  return `${rootSku||''}::${substrate||''}`;
+}
+
+/* Merge-on-reimport: preserves existing rows, adds new ones, and refreshes
+   mutable fields (address / name) when a ship-to re-appears. Never DELETES
+   a ship-to that disappeared from the new export — per spec, additions are
+   what matter; removals are handled manually. Returns stats for the UI. */
+function mergeCustomerList(existing, incoming) {
+  const existingRows = (existing && existing.rows) || [];
+  const incomingRows = incoming.rows || [];
+  const byKey = new Map();
+  existingRows.forEach(r => byKey.set(makeCustomerKey(r.branch, r.custId, r.shipToNumber), r));
+  let added = 0, updated = 0, unchanged = 0;
+  incomingRows.forEach(r => {
+    const k = makeCustomerKey(r.branch, r.custId, r.shipToNumber);
+    if (!byKey.has(k)) { byKey.set(k, r); added++; }
+    else {
+      const prev = byKey.get(k);
+      // Compare mutable fields; refresh if any changed.
+      const changed = prev.shipToName!==r.shipToName || prev.customerName!==r.customerName
+        || prev.address1!==r.address1 || prev.address2!==r.address2
+        || prev.city!==r.city || prev.state!==r.state || prev.zip!==r.zip;
+      if (changed) { byKey.set(k, r); updated++; } else { unchanged++; }
+    }
+  });
+  return {
+    list: {
+      rows: Array.from(byKey.values()),
+      importedAt: new Date().toISOString(),
+      sourceFilename: incoming.sourceFilename || '(unknown)'
+    },
+    stats: { added, updated, unchanged, total: byKey.size }
+  };
 }
 
 /* Convert parsed-admin items (array of {sku, desc, section, mats}) back
@@ -3843,6 +3955,455 @@ function SectionVisualSelector({ sec, setSec, setS4sFilter, effectiveCat }) {
 }
 
 
+/* ═══════════════════════════════════════════════════════════════════════
+   v32 · CUSTOMER PRICING ADMIN · Stage 1A
+   ═══════════════════════════════════════════════════════════════════════
+   New top-level admin page that handles:
+
+     (1) CUSTOMER MASTER LIST IMPORT
+         - Upload .xlsx / .csv with Branch / Cust ID / Ship To Number /
+           Ship To Name / Customer Name / Address fields
+         - Flexible column mapping (user-adjustable) so future ERP exports
+           with different column orders don't require a code change
+         - Merge-on-reimport: additions get added, re-appearances refresh
+           mutable fields, disappearances are preserved
+         - Persists via saveCustomerList()
+
+     (2) CUSTOMER SELECTOR
+         - Cascading Branch → Customer (searchable) → Ship To Name
+         - Search works across customer name AND ship-to name because
+           holding companies (e.g. US LBM) own dozens of retail brands and
+           users recognize the retail brand, not the Cust ID
+         - Selection produces a customerKey used by the pricing surface
+
+     (3) PRICING ENTRY — STAGE 1B PLACEHOLDER
+         - The entry surface (SKU+substrate selector, UOM auto-lookup,
+           their SKU / their cost fields, validation) is the next build.
+         - Stage 1A renders a scaffolded panel with clear "coming next"
+           messaging so the architecture is visible end-to-end.
+
+   Applicable only to the Mouldings section per spec. Pricing overrides
+   written here replace Level 1 on the customer-facing portal (green-text
+   display with tooltip legend, only surfaced when at least one override
+   exists in the system).
+   =========================================================================*/
+function CustomerPricingAdmin() {
+  /* Hooks (useState/useEffect/useMemo/useRef) are globally destructured at
+     the top of the script — we just use them directly, matching the
+     convention in AdminPanel and ProductAdmin. */
+
+  /* ───────── State: customer master list ───────── */
+  const [customerList, setCustomerList] = useState(() => loadCustomerList());
+  const [importStats, setImportStats]   = useState(null);   // from most recent import
+  const [importError, setImportError]   = useState(null);
+  const fileRef = useRef(null);
+
+  /* Column mapping state. The user can adjust which source columns map to
+     which canonical fields. Defaults match the file format we validated
+     against (GSL ERP export with Branch/Cust ID/Ship To Number in that
+     order). Any future export with a different layout just needs the
+     mapping adjusted once; the parse logic below reads the mapping. */
+  const DEFAULT_COLMAP = {
+    branch:        'Branch',
+    custId:        'Cust ID',
+    shipToNumber:  'Ship To Number',
+    shipToName:    'Ship To Name',
+    customerName:  'Customer Name',
+    address1:      'Address 1',
+    address2:      'Address 2',
+    city:          'City',
+    state:         'State',
+    zip:           'Zip'
+  };
+  const [colMap, setColMap]       = useState(DEFAULT_COLMAP);
+  const [pendingHeaders, setPendingHeaders] = useState(null);  // headers seen in staged file
+  const [pendingRows, setPendingRows]       = useState(null);  // raw rows (array of objects)
+  const [pendingFilename, setPendingFilename] = useState(null);
+
+  /* ───────── State: customer selector ───────── */
+  const [selectedBranch, setSelectedBranch]       = useState(null);
+  const [selectedCustId, setSelectedCustId]       = useState(null);
+  const [selectedShipToNumber, setSelectedShipToNumber] = useState(null);
+  const [custSearch, setCustSearch] = useState('');
+
+  /* Derived: index the customer list for fast cascading lookup. Memoized
+     against the list reference so it only rebuilds when the list changes,
+     not on every keystroke in the search box. */
+  const customerIndex = useMemo(() => {
+    const rows = (customerList && customerList.rows) || [];
+    const byBranch = new Map();           // branch -> Map(custId -> {name, shipTos: []})
+    rows.forEach(r => {
+      if (!byBranch.has(r.branch)) byBranch.set(r.branch, new Map());
+      const custs = byBranch.get(r.branch);
+      if (!custs.has(r.custId)) custs.set(r.custId, { custId:r.custId, customerName:r.customerName, shipTos: [] });
+      custs.get(r.custId).shipTos.push(r);
+    });
+    return byBranch;
+  }, [customerList]);
+
+  const availableBranches = useMemo(() => Array.from(customerIndex.keys()).sort(), [customerIndex]);
+
+  /* Auto-select the only branch if there's exactly one. Keeps the UI from
+     demanding a trivial choice. Resets downstream selections when branches
+     change (e.g., after a fresh import). */
+  useEffect(() => {
+    if (availableBranches.length === 1 && selectedBranch !== availableBranches[0]) {
+      setSelectedBranch(availableBranches[0]);
+      setSelectedCustId(null);
+      setSelectedShipToNumber(null);
+    } else if (availableBranches.length === 0 && selectedBranch) {
+      setSelectedBranch(null); setSelectedCustId(null); setSelectedShipToNumber(null);
+    }
+  }, [availableBranches.join('|')]);   // eslint-disable-line
+
+  const availableCustomers = useMemo(() => {
+    if (!selectedBranch || !customerIndex.has(selectedBranch)) return [];
+    const q = custSearch.trim().toLowerCase();
+    const all = Array.from(customerIndex.get(selectedBranch).values());
+    /* Search matches against the customer name AND any of their ship-to
+       names. This is the critical UX for holding companies: a user types
+       "universal supply" and we surface US LBM HOLDINGS because one of
+       its ship-tos matches, even though the customer name is unrelated. */
+    if (!q) return all.sort((a,b)=> (a.customerName||'').localeCompare(b.customerName||''));
+    return all.filter(c => {
+      if ((c.customerName||'').toLowerCase().includes(q)) return true;
+      if ((c.custId||'').toString().includes(q)) return true;
+      return c.shipTos.some(s => (s.shipToName||'').toLowerCase().includes(q));
+    }).sort((a,b)=> (a.customerName||'').localeCompare(b.customerName||''));
+  }, [selectedBranch, customerIndex, custSearch]);
+
+  const selectedCustomer = useMemo(() => {
+    if (!selectedBranch || !selectedCustId) return null;
+    const custs = customerIndex.get(selectedBranch);
+    return custs ? custs.get(selectedCustId) : null;
+  }, [selectedBranch, selectedCustId, customerIndex]);
+
+  const availableShipTos = useMemo(() => {
+    if (!selectedCustomer) return [];
+    /* Sort ship-tos alphabetically by Ship To Name (the display key) per
+       spec — ship-to name is what users recognize, not the ship-to number. */
+    return [...selectedCustomer.shipTos].sort((a,b)=> (a.shipToName||'').localeCompare(b.shipToName||''));
+  }, [selectedCustomer]);
+
+  const selectedShipTo = useMemo(() => {
+    if (!selectedShipToNumber) return null;
+    return availableShipTos.find(s => s.shipToNumber === selectedShipToNumber) || null;
+  }, [selectedShipToNumber, availableShipTos]);
+
+  /* ───────── File upload handler (xlsx + csv) ───────── */
+  const handleFile = (file) => {
+    if (!file) return;
+    setImportError(null);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        /* SheetJS handles both .xlsx and .csv. For .csv, header row is
+           still used; blank cells become ''. cellDates off — we treat
+           everything as strings/numbers, never dates. */
+        const wb = window.XLSX.read(data, { type:'array', cellDates:false });
+        const sheetName = wb.SheetNames[0];
+        const sheet = wb.Sheets[sheetName];
+        const rows = window.XLSX.utils.sheet_to_json(sheet, { defval:'', raw:false });
+        if (!rows.length) { setImportError('File is empty or has no data rows.'); return; }
+        const headers = Object.keys(rows[0]);
+        setPendingHeaders(headers);
+        setPendingRows(rows);
+        setPendingFilename(file.name);
+        /* Auto-map columns by matching header text (case-insensitive,
+           substring-tolerant). Anything we can't auto-map stays unmapped
+           and the user resolves it in the mapping UI. */
+        const autoMap = {...DEFAULT_COLMAP};
+        Object.keys(autoMap).forEach(field => {
+          const want = autoMap[field].toLowerCase().replace(/\s+/g,'');
+          const match = headers.find(h => h.toLowerCase().replace(/\s+/g,'') === want);
+          if (match) autoMap[field] = match;
+          else {
+            // Loose match fallback (e.g. "Ship To" in file header vs "Ship To Number")
+            const loose = headers.find(h => h.toLowerCase().includes(field.toLowerCase().slice(0,4)));
+            autoMap[field] = loose || '';
+          }
+        });
+        setColMap(autoMap);
+      } catch (err) {
+        console.error(err);
+        setImportError('Could not parse file: '+err.message);
+      }
+    };
+    reader.onerror = () => setImportError('Could not read file.');
+    reader.readAsArrayBuffer(file);
+  };
+
+  /* Commit the staged rows into the customer list with the current column
+     mapping applied. Required fields: branch, custId, shipToNumber. Rows
+     missing any of these are silently skipped (with a count in the result
+     banner), because the data is frequently dirty at the tail of ERP exports. */
+  const commitImport = () => {
+    if (!pendingRows) return;
+    const required = ['branch','custId','shipToNumber'];
+    const missingMap = required.filter(f => !colMap[f]);
+    if (missingMap.length) {
+      setImportError('Map these required columns first: '+missingMap.join(', '));
+      return;
+    }
+    const normalized = [];
+    let skipped = 0;
+    pendingRows.forEach(r => {
+      const out = {};
+      Object.keys(colMap).forEach(f => { out[f] = colMap[f] ? String(r[colMap[f]]||'').trim() : ''; });
+      if (required.some(f => !out[f])) { skipped++; return; }
+      normalized.push(out);
+    });
+    if (!normalized.length) { setImportError('No valid rows after mapping. Check required column assignments.'); return; }
+    const incoming = { rows: normalized, sourceFilename: pendingFilename };
+    const { list, stats } = mergeCustomerList(customerList, incoming);
+    saveCustomerList(list);
+    setCustomerList(list);
+    setImportStats({...stats, skipped});
+    setPendingRows(null); setPendingHeaders(null); setPendingFilename(null);
+    setImportError(null);
+  };
+
+  const cancelStaged = () => { setPendingRows(null); setPendingHeaders(null); setPendingFilename(null); setImportError(null); };
+
+  const clearAll = () => {
+    if (!confirm('Remove the entire customer master list? This cannot be undone.')) return;
+    clearCustomerList();
+    setCustomerList(null);
+    setSelectedBranch(null); setSelectedCustId(null); setSelectedShipToNumber(null);
+    setImportStats(null);
+  };
+
+  /* ───────── Rendering ───────── */
+  const cardStyle = {background:"rgba(197,165,90,0.03)",border:"1px solid rgba(197,165,90,0.18)",borderRadius:8,padding:20,marginBottom:16};
+  const cardHeaderStyle = {fontSize:12,fontWeight:900,color:GOLD,letterSpacing:1.5,marginBottom:4,textTransform:'uppercase'};
+  const cardSublineStyle = {fontSize:10,color:"rgba(255,255,255,0.45)",marginBottom:16,lineHeight:1.5};
+  const inputStyle = {background:"rgba(0,0,0,0.3)",border:"1px solid rgba(197,165,90,0.2)",borderRadius:4,color:"#fff",padding:"8px 10px",fontSize:12,fontFamily:"inherit"};
+  const labelStyle = {fontSize:9,fontWeight:700,letterSpacing:1,color:"rgba(197,165,90,0.75)",textTransform:"uppercase",marginBottom:4,display:"block"};
+
+  const totalRows = (customerList && customerList.rows) ? customerList.rows.length : 0;
+  const totalCustomers = customerIndex.size === 0 ? 0 :
+    Array.from(customerIndex.values()).reduce((n,m)=> n+m.size, 0);
+
+  return (
+    <div style={{color:"#fff",animation:"fadeIn 0.2s ease"}}>
+      {/* Page header */}
+      <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:20,paddingBottom:14,borderBottom:"1px solid rgba(197,165,90,0.18)"}}>
+        <div>
+          <div style={{fontSize:20,fontWeight:900,color:"#fff",letterSpacing:0.5}}>Customer Pricing</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.45)",marginTop:4,lineHeight:1.4}}>
+            Per-customer cost overrides and SKU cross-references for the <span style={{color:GOLD,fontWeight:700}}>Mouldings</span> section.
+            Overrides replace Level 1 on the customer-facing portal and display in green with the customer's markup applied.
+          </div>
+        </div>
+        <span style={{fontSize:9,padding:"3px 8px",borderRadius:10,background:"rgba(197,165,90,0.08)",border:"1px solid rgba(197,165,90,0.2)",color:GOLD,letterSpacing:0.8,fontWeight:700}}>v32 · STAGE 1A</span>
+      </div>
+
+      {/* ─── CARD 1: CUSTOMER MASTER LIST ─── */}
+      <div style={cardStyle}>
+        <div style={cardHeaderStyle}>Customer Master List</div>
+        <div style={cardSublineStyle}>
+          Upload an export from your ERP with the customer universe. Re-importing merges additions and refreshes changed rows; existing ship-tos that disappeared from the new export are preserved.
+        </div>
+
+        {/* Stats bar */}
+        <div style={{display:"flex",gap:16,marginBottom:16,flexWrap:"wrap"}}>
+          <StatPill label="Ship-to rows" value={totalRows}/>
+          <StatPill label="Customers"  value={totalCustomers}/>
+          <StatPill label="Branches"   value={availableBranches.length}/>
+          {customerList && customerList.importedAt && (
+            <StatPill label="Last import" value={new Date(customerList.importedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}/>
+          )}
+        </div>
+
+        {/* Upload action + clear */}
+        {!pendingRows && (
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+            <button onClick={()=>fileRef.current && fileRef.current.click()}
+              style={{padding:"9px 18px",borderRadius:6,border:`1px solid ${GOLD}`,background:"rgba(197,165,90,0.1)",color:GOLD,fontSize:11,fontWeight:700,letterSpacing:0.8,cursor:"pointer"}}>
+              + Import Customer File
+            </button>
+            <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}}
+              onChange={e=>{ handleFile(e.target.files[0]); e.target.value=''; }}/>
+            {totalRows > 0 && (
+              <button onClick={clearAll}
+                style={{padding:"9px 18px",borderRadius:6,border:"1px solid rgba(232,90,90,0.35)",background:"transparent",color:"#e85a5a",fontSize:10,fontWeight:700,letterSpacing:0.8,cursor:"pointer"}}>
+                Clear all
+              </button>
+            )}
+          </div>
+        )}
+
+        {importError && (
+          <div style={{marginTop:12,padding:"8px 12px",background:"rgba(232,90,90,0.08)",border:"1px solid rgba(232,90,90,0.3)",borderRadius:4,color:"#e85a5a",fontSize:11}}>
+            {importError}
+          </div>
+        )}
+
+        {importStats && !pendingRows && (
+          <div style={{marginTop:12,padding:"10px 14px",background:"rgba(90,184,114,0.08)",border:"1px solid rgba(90,184,114,0.25)",borderRadius:4,fontSize:11,color:"#5ab872"}}>
+            <strong>Import complete.</strong> {importStats.added} added · {importStats.updated} refreshed · {importStats.unchanged} unchanged
+            {importStats.skipped > 0 && <span> · {importStats.skipped} skipped (missing required fields)</span>}
+            {" "}· {importStats.total} total in master.
+          </div>
+        )}
+
+        {/* Staged file: column mapping UI */}
+        {pendingRows && pendingHeaders && (
+          <div style={{marginTop:16,padding:16,background:"rgba(0,0,0,0.25)",border:"1px dashed rgba(197,165,90,0.3)",borderRadius:6}}>
+            <div style={{fontSize:11,fontWeight:700,color:GOLD,marginBottom:4,letterSpacing:0.5}}>Staged: {pendingFilename} ({pendingRows.length} rows)</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginBottom:14,lineHeight:1.5}}>
+              Confirm the column mapping below. Auto-detected from your file's header row. Required: Branch, Cust ID, Ship To Number.
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))",gap:12,marginBottom:16}}>
+              {Object.keys(DEFAULT_COLMAP).map(field => {
+                const isRequired = ['branch','custId','shipToNumber'].includes(field);
+                return (
+                  <div key={field}>
+                    <label style={labelStyle}>
+                      {DEFAULT_COLMAP[field]}
+                      {isRequired && <span style={{color:"#e85a5a",marginLeft:4}}>*</span>}
+                    </label>
+                    <select value={colMap[field]||''} onChange={e=>setColMap({...colMap,[field]:e.target.value})}
+                      style={{...inputStyle,width:"100%"}}>
+                      <option value="">— not mapped —</option>
+                      {pendingHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={commitImport}
+                style={{padding:"9px 18px",borderRadius:6,border:`1px solid ${GOLD}`,background:GOLD,color:"#000",fontSize:11,fontWeight:900,letterSpacing:0.8,cursor:"pointer"}}>
+                Commit Import
+              </button>
+              <button onClick={cancelStaged}
+                style={{padding:"9px 18px",borderRadius:6,border:"1px solid rgba(255,255,255,0.2)",background:"transparent",color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:700,letterSpacing:0.8,cursor:"pointer"}}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ─── CARD 2: CUSTOMER SELECTOR ─── */}
+      <div style={cardStyle}>
+        <div style={cardHeaderStyle}>Select Customer</div>
+        <div style={cardSublineStyle}>
+          Pick the Branch, Customer, and Ship-to location whose pricing overrides you want to manage. The ship-to name is the primary identifier — holding companies often operate many retail brands.
+        </div>
+
+        {totalRows === 0 ? (
+          <div style={{padding:"30px 20px",textAlign:"center",background:"rgba(0,0,0,0.2)",border:"1px dashed rgba(197,165,90,0.2)",borderRadius:6,color:"rgba(255,255,255,0.45)",fontSize:11}}>
+            No customer master list loaded yet. Import a file above to get started.
+          </div>
+        ) : (
+          <div style={{display:"grid",gridTemplateColumns:"180px 1fr 1.2fr",gap:14}}>
+            {/* Branch */}
+            <div>
+              <label style={labelStyle}>Branch</label>
+              <select value={selectedBranch||''} onChange={e=>{setSelectedBranch(e.target.value||null); setSelectedCustId(null); setSelectedShipToNumber(null);}}
+                style={{...inputStyle,width:"100%"}}>
+                <option value="">— select branch —</option>
+                {availableBranches.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+
+            {/* Customer (searchable) */}
+            <div>
+              <label style={labelStyle}>Customer</label>
+              <input type="text" placeholder="Search by customer, Cust ID, or ship-to brand…"
+                value={custSearch} onChange={e=>setCustSearch(e.target.value)}
+                disabled={!selectedBranch}
+                style={{...inputStyle,width:"100%",marginBottom:6,opacity:selectedBranch?1:0.4}}/>
+              <select value={selectedCustId||''} onChange={e=>{setSelectedCustId(e.target.value||null); setSelectedShipToNumber(null);}}
+                disabled={!selectedBranch}
+                style={{...inputStyle,width:"100%",opacity:selectedBranch?1:0.4}}
+                size={Math.min(8, Math.max(3, availableCustomers.length))}>
+                {availableCustomers.length === 0 && <option value="">— no matches —</option>}
+                {availableCustomers.map(c => (
+                  <option key={c.custId} value={c.custId}>
+                    {c.customerName} · {c.custId} ({c.shipTos.length} ship-to{c.shipTos.length===1?'':'s'})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Ship To */}
+            <div>
+              <label style={labelStyle}>Ship To</label>
+              <select value={selectedShipToNumber||''} onChange={e=>setSelectedShipToNumber(e.target.value||null)}
+                disabled={!selectedCustomer}
+                style={{...inputStyle,width:"100%",opacity:selectedCustomer?1:0.4}}
+                size={Math.min(8, Math.max(3, availableShipTos.length))}>
+                {availableShipTos.length === 0 && <option value="">— select a customer first —</option>}
+                {availableShipTos.map(s => (
+                  <option key={s.shipToNumber} value={s.shipToNumber}>
+                    {s.shipToName} · #{s.shipToNumber}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Selected address preview */}
+        {selectedShipTo && (
+          <div style={{marginTop:16,padding:"12px 16px",background:"rgba(197,165,90,0.06)",borderLeft:`3px solid ${GOLD}`,borderRadius:"0 4px 4px 0"}}>
+            <div style={{fontSize:10,color:"rgba(197,165,90,0.75)",fontWeight:700,letterSpacing:1,marginBottom:4}}>SELECTED</div>
+            <div style={{fontSize:13,fontWeight:700,color:"#fff",marginBottom:2}}>{selectedShipTo.shipToName}</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",lineHeight:1.5}}>
+              {selectedShipTo.customerName} · Cust ID {selectedShipTo.custId} · Ship To #{selectedShipTo.shipToNumber}<br/>
+              {selectedShipTo.address1}{selectedShipTo.address2?`, ${selectedShipTo.address2}`:''}<br/>
+              {selectedShipTo.city}, {selectedShipTo.state} {selectedShipTo.zip}
+            </div>
+            <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",marginTop:6,fontFamily:"'IBM Plex Mono',monospace"}}>
+              customerKey: {makeCustomerKey(selectedShipTo.branch, selectedShipTo.custId, selectedShipTo.shipToNumber)}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ─── CARD 3: PRICING ENTRY (STAGE 1B PLACEHOLDER) ─── */}
+      <div style={{...cardStyle,opacity:selectedShipTo?1:0.6}}>
+        <div style={cardHeaderStyle}>Pricing Overrides · Mouldings</div>
+        <div style={cardSublineStyle}>
+          Enter a root SKU + substrate to look up the unit of measure, then record this customer's cost and optional cross-reference SKU. Each override replaces Level 1 on the portal for this customer.
+        </div>
+
+        <div style={{padding:"40px 20px",textAlign:"center",background:"rgba(0,0,0,0.2)",border:"1px dashed rgba(197,165,90,0.2)",borderRadius:6}}>
+          <div style={{fontSize:11,fontWeight:700,color:GOLD,letterSpacing:1,marginBottom:8,textTransform:"uppercase"}}>Coming next · Stage 1B</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",lineHeight:1.6,maxWidth:540,margin:"0 auto"}}>
+            The override entry grid lands in the next build. It will auto-populate the unit of measure when you enter a root SKU + substrate (e.g. <span style={{color:GOLD,fontFamily:"'IBM Plex Mono',monospace"}}>UC41 + PRF → LF</span>), accept optional cross-reference SKU and required cost, and persist to the selected customer's override map.
+          </div>
+          {selectedShipTo && (
+            <div style={{marginTop:14,fontSize:10,color:"rgba(255,255,255,0.4)"}}>
+              Would save under:{" "}
+              <span style={{color:GOLD,fontFamily:"'IBM Plex Mono',monospace"}}>
+                {makeCustomerKey(selectedShipTo.branch, selectedShipTo.custId, selectedShipTo.shipToNumber)}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Tiny stat-pill component reused across the Customer Pricing page.
+   Extracted because we render 4 of them in a row and the inline style
+   noise made the parent JSX unreadable. */
+function StatPill({label, value}) {
+  return (
+    <div style={{padding:"8px 14px",background:"rgba(0,0,0,0.25)",border:"1px solid rgba(197,165,90,0.15)",borderRadius:6,minWidth:90}}>
+      <div style={{fontSize:8,fontWeight:700,letterSpacing:1,color:"rgba(197,165,90,0.6)",textTransform:"uppercase"}}>{label}</div>
+      <div style={{fontSize:15,fontWeight:900,color:"#fff",marginTop:2,fontFamily:"'IBM Plex Mono',monospace"}}>{value}</div>
+    </div>
+  );
+}
+
+
 function App() {
   const [user, setUser] = useState(null);
   /* v21: Ensure the page starts at the top whenever the user logs in (or on app mount
@@ -4195,6 +4756,8 @@ function App() {
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <button onClick={()=>setPage(page==="admin"?"portal":"admin")} style={{padding:"7px 16px",borderRadius:6,border:page==="admin"?"1px solid rgba(197,165,90,0.3)":"1px solid rgba(255,255,255,0.06)",background:page==="admin"?"rgba(197,165,90,0.12)":"transparent",color:page==="admin"?GOLD:"rgba(255,255,255,0.35)",fontSize:11,fontWeight:700,cursor:"pointer"}}>{page==="admin"?"← Back to Pricing":"Pricing Settings"}</button>
               <button onClick={()=>setPage(page==="productadmin"?"portal":"productadmin")} style={{padding:"7px 16px",borderRadius:6,border:page==="productadmin"?"1px solid rgba(197,165,90,0.3)":"1px solid rgba(255,255,255,0.06)",background:page==="productadmin"?"rgba(197,165,90,0.12)":"transparent",color:page==="productadmin"?GOLD:"rgba(255,255,255,0.35)",fontSize:11,fontWeight:700,cursor:"pointer"}}>{page==="productadmin"?"← Back to Pricing":"Product Admin"}</button>
+              {/* v32: Customer Pricing tab — customer-scoped cost overrides for Mouldings. */}
+              <button onClick={()=>setPage(page==="customerpricing"?"portal":"customerpricing")} style={{padding:"7px 16px",borderRadius:6,border:page==="customerpricing"?"1px solid rgba(197,165,90,0.3)":"1px solid rgba(255,255,255,0.06)",background:page==="customerpricing"?"rgba(197,165,90,0.12)":"transparent",color:page==="customerpricing"?GOLD:"rgba(255,255,255,0.35)",fontSize:11,fontWeight:700,cursor:"pointer"}}>{page==="customerpricing"?"← Back to Pricing":"Customer Pricing"}</button>
               {tiersLoaded && <span style={{fontSize:9,color:"#4ade80",fontWeight:600,display:"inline-flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:"#4ade80",display:"inline-block"}}></span>DB</span>}
               <button onClick={()=>setUser(null)} style={{padding:"6px 12px",borderRadius:6,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.3)",fontSize:10,fontWeight:600,cursor:"pointer",marginLeft:4}}>Sign Out</button>
             </div>
@@ -4223,6 +4786,8 @@ function App() {
       <div style={{maxWidth:1500,margin:"0 auto",padding:"108px 24px 20px"}}>
         {page === "admin" && <AdminPanel user={user} tiers={tiers} setTiers={setTiers} team={team} setTeam={setTeam}/>}
         {page === "productadmin" && <ProductAdmin levelVis={levelVis} setLevelVis={setLevelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn} setShowAllPriceLevelsBtn={setShowAllPriceLevelsBtn} hiddenSkuSet={hiddenSkuSet} onVisibilityChange={(hidden) => setHiddenSkuSet(new Set(hidden))} productOverrides={productOverrides} setProductOverrides={updateProductOverrides} effectiveCat={effectiveCat} publishedMeta={publishedMeta} onPublish={publishCatalog} onRevertPublished={revertPublishedCatalog}/>}
+        {/* v32: Customer Pricing admin page. No props needed — it manages its own state via storage helpers. */}
+        {page === "customerpricing" && <CustomerPricingAdmin/>}
 
         {page === "portal" && (<>
           {/* PRICING BAR — above lookup */}
