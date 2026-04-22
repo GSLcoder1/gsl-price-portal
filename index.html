@@ -463,8 +463,9 @@ function clearPublishedCatalog() {
        customerKey        = `${branch}::${custId}::${shipToNumber}`
        mouldingOverrideKey = `${rootSku}::${substrate}`     (e.g. "UC41::PRF")
    =========================================================================*/
-const CUSTOMER_LIST_KEY      = "gsl_customer_list";
-const CUSTOMER_PRICING_KEY   = "gsl_customer_pricing";
+const CUSTOMER_LIST_KEY           = "gsl_customer_list";
+const CUSTOMER_PRICING_KEY        = "gsl_customer_pricing";
+const CUSTOMER_PRICING_SELECTED_KEY = "gsl_customer_pricing_selected"; /* Stage 1B.3: restore last-selected ship-to */
 
 function loadCustomerList() {
   try {
@@ -489,6 +490,28 @@ function loadCustomerPricing() {
 function saveCustomerPricing(overrides) {
   try { localStorage.setItem(CUSTOMER_PRICING_KEY, JSON.stringify(overrides)); return true; }
   catch (e) { console.error("saveCustomerPricing", e); return false; }
+}
+
+/* Stage 1B.3: persist the admin's currently-selected ship-to so navigating
+   away to Lookup and back doesn't silently drop the selection and make it
+   look like the overrides disappeared. Stored as {branch, custId,
+   shipToNumber}; read on mount in CustomerPricingAdmin, cleared by the
+   explicit "Change customer" button. */
+function loadSelectedCustomer() {
+  try {
+    const raw = localStorage.getItem(CUSTOMER_PRICING_SELECTED_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj || !obj.branch || !obj.custId || !obj.shipToNumber) return null;
+    return obj;
+  } catch { return null; }
+}
+function saveSelectedCustomer(sel) {
+  try { localStorage.setItem(CUSTOMER_PRICING_SELECTED_KEY, JSON.stringify(sel)); return true; }
+  catch (e) { console.error("saveSelectedCustomer", e); return false; }
+}
+function clearSelectedCustomer() {
+  try { localStorage.removeItem(CUSTOMER_PRICING_SELECTED_KEY); return true; } catch { return false; }
 }
 
 /* Compose / decompose the customerKey so callers never hand-roll the
@@ -2838,33 +2861,36 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
           Pricing page to the Admin page so master-data management lives
           in one place). Contains its own state + import logic; reads and
           writes localStorage. ─── */}
-      <div style={{fontSize:10,fontWeight:700,color:"rgba(197,165,90,0.5)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:8,marginTop:4}}>Master Data</div>
+      <div style={{fontSize:11,fontWeight:900,color:GOLD,letterSpacing:2,textTransform:"uppercase",marginBottom:10,marginTop:4,paddingBottom:6,borderBottom:`2px solid ${GOLD}`}}>Master Data</div>
       <CustomerListAdmin/>
 
-      <div style={{fontSize:10,fontWeight:700,color:"rgba(197,165,90,0.5)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:8,marginTop:24}}>Product Catalog</div>
+      <div style={{fontSize:11,fontWeight:900,color:GOLD,letterSpacing:2,textTransform:"uppercase",marginBottom:10,marginTop:28,paddingBottom:6,borderBottom:`2px solid ${GOLD}`}}>Product Catalog</div>
 
       {/* Live catalog status badge — always visible, shows what the main
-          pricing view is currently reading. */}
+          pricing view is currently reading. Stage 1B.3: fixed the
+          green-on-green legibility problem — solid dark backing, bright
+          accent dot, white bold primary text. */}
       <div style={{
         display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",
-        background: publishedMeta ? "linear-gradient(145deg, #000 0%, #0A1F0B 100%)" : "linear-gradient(145deg, #000 0%, #0C1F0E 100%)",
-        border: "1px solid " + (publishedMeta ? "rgba(76,175,80,0.35)" : "rgba(255,255,255,0.08)"),
-        borderRadius:10, padding:"12px 18px", marginBottom:16
+        background: "linear-gradient(145deg, #0a0a0a 0%, #1a1a1a 100%)",
+        border: "1px solid " + (publishedMeta ? "#4CAF50" : `${GOLD}`),
+        borderRadius:10, padding:"14px 20px", marginBottom:18,
+        boxShadow:"0 2px 8px rgba(0,0,0,0.4)"
       }}>
-        <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,minWidth:0}}>
           <span style={{
-            display:"inline-block",width:8,height:8,borderRadius:"50%",
-            background: publishedMeta ? "#4CAF50" : "rgba(197,165,90,0.7)",
-            boxShadow: publishedMeta ? "0 0 8px rgba(76,175,80,0.6)" : "none",
+            display:"inline-block",width:10,height:10,borderRadius:"50%",
+            background: publishedMeta ? "#4CAF50" : GOLD,
+            boxShadow: publishedMeta ? "0 0 10px rgba(76,175,80,0.8)" : `0 0 8px ${GOLD}`,
             flexShrink:0
           }}/>
           <div style={{minWidth:0}}>
-            <div style={{fontSize:9,color:"rgba(255,255,255,0.45)",letterSpacing:1.2,textTransform:"uppercase",fontWeight:700,marginBottom:2}}>Live Catalog</div>
-            <div style={{fontSize:13,fontWeight:700,color:"#fff"}}>
+            <div style={{fontSize:10,color:GOLD,letterSpacing:1.5,textTransform:"uppercase",fontWeight:900,marginBottom:3}}>Live Catalog</div>
+            <div style={{fontSize:13,fontWeight:800,color:"#fff"}}>
               {publishedMeta ? (
-                <>Uploaded catalog <span style={{color:"rgba(255,255,255,0.5)",fontWeight:500,fontSize:12}}> · {publishedMeta.total || 0} products · published {publishedAtLabel}</span></>
+                <>Uploaded catalog <span style={{color:"rgba(255,255,255,0.65)",fontWeight:500,fontSize:12}}> · {publishedMeta.total || 0} products · published {publishedAtLabel}</span></>
               ) : (
-                <>Built-in catalog <span style={{color:"rgba(255,255,255,0.5)",fontWeight:500,fontSize:12}}> · embedded in the app</span></>
+                <>Built-in catalog <span style={{color:"rgba(255,255,255,0.65)",fontWeight:500,fontSize:12}}> · embedded in the app</span></>
               )}
             </div>
           </div>
@@ -4130,13 +4156,21 @@ function CustomerListAdmin() {
     setImportStats(null);
   };
 
-  /* Local style cribs — kept in-scope so this component is drop-in
-     portable without reaching into the parent's style definitions. */
-  const cardStyle = {background:"rgba(0,0,0,0.38)",border:"1px solid rgba(197,165,90,0.35)",borderRadius:8,padding:20,marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.25)"};
-  const cardHeaderStyle = {fontSize:12,fontWeight:900,color:GOLD,letterSpacing:1.5,marginBottom:4,textTransform:'uppercase'};
-  const cardSublineStyle = {fontSize:10,color:"rgba(255,255,255,0.45)",marginBottom:16,lineHeight:1.5};
-  const inputStyle = {background:"rgba(0,0,0,0.3)",border:"1px solid rgba(197,165,90,0.2)",borderRadius:4,color:"#fff",padding:"8px 10px",fontSize:12,fontFamily:"inherit"};
-  const labelStyle = {fontSize:9,fontWeight:700,letterSpacing:1,color:"rgba(197,165,90,0.75)",textTransform:"uppercase",marginBottom:4,display:"block"};
+  /* Stage 1B.3: contrast pass. This card was near-invisible (dark card on
+     dark page). Flipped to a gold gradient with dark bold text inside — the
+     gold-bg/dark-text rule now applied across the admin page. Internal
+     styles below are scoped to this component and use DARK values so text,
+     inputs, and sublines all pop against the gold background. */
+  const cardStyle = {
+    background:`linear-gradient(135deg, #E8D48A 0%, ${GOLD} 55%, #A8883A 100%)`,
+    border:"1px solid #7a6525",
+    borderRadius:8, padding:22, marginBottom:18,
+    boxShadow:"0 4px 14px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.25)"
+  };
+  const cardHeaderStyle = {fontSize:13,fontWeight:900,color:"#1a1200",letterSpacing:1.6,marginBottom:4,textTransform:'uppercase'};
+  const cardSublineStyle = {fontSize:11,color:"rgba(26,18,0,0.72)",marginBottom:16,lineHeight:1.5,fontWeight:500};
+  const inputStyle = {background:"rgba(255,255,255,0.85)",border:"1px solid rgba(26,18,0,0.35)",borderRadius:4,color:"#0a0a0a",padding:"8px 10px",fontSize:12,fontFamily:"inherit",fontWeight:600};
+  const labelStyle = {fontSize:10,fontWeight:900,letterSpacing:1,color:"#1a1200",textTransform:"uppercase",marginBottom:4,display:"block"};
 
   return (
     <div style={cardStyle}>
@@ -4159,14 +4193,14 @@ function CustomerListAdmin() {
       {!pendingRows && (
         <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
           <button onClick={()=>fileRef.current && fileRef.current.click()}
-            style={{padding:"9px 18px",borderRadius:6,border:`1px solid ${GOLD}`,background:"rgba(197,165,90,0.1)",color:GOLD,fontSize:11,fontWeight:700,letterSpacing:0.8,cursor:"pointer"}}>
+            style={{padding:"10px 20px",borderRadius:6,border:"1px solid #1a1200",background:"linear-gradient(180deg,#1a1a1a 0%,#000 100%)",color:GOLD,fontSize:11,fontWeight:900,letterSpacing:0.8,cursor:"pointer",boxShadow:"0 2px 6px rgba(0,0,0,0.4)"}}>
             + Import Customer File
           </button>
           <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}}
             onChange={e=>{ handleFile(e.target.files[0]); e.target.value=''; }}/>
           {stats.totalRows > 0 && (
             <button onClick={clearAll}
-              style={{padding:"9px 18px",borderRadius:6,border:"1px solid rgba(232,90,90,0.35)",background:"transparent",color:"#e85a5a",fontSize:10,fontWeight:700,letterSpacing:0.8,cursor:"pointer"}}>
+              style={{padding:"10px 18px",borderRadius:6,border:"1px solid #7a1e1e",background:"rgba(255,255,255,0.6)",color:"#7a1e1e",fontSize:10,fontWeight:900,letterSpacing:0.8,cursor:"pointer"}}>
               Clear all
             </button>
           )}
@@ -4174,14 +4208,14 @@ function CustomerListAdmin() {
       )}
 
       {importError && (
-        <div style={{marginTop:12,padding:"8px 12px",background:"rgba(232,90,90,0.08)",border:"1px solid rgba(232,90,90,0.3)",borderRadius:4,color:"#e85a5a",fontSize:11}}>
+        <div style={{marginTop:12,padding:"9px 13px",background:"#7a1e1e",border:"1px solid #3d0f0f",borderRadius:4,color:"#fff",fontSize:11,fontWeight:700}}>
           {importError}
         </div>
       )}
 
       {importStats && !pendingRows && (
-        <div style={{marginTop:12,padding:"10px 14px",background:"rgba(90,184,114,0.08)",border:"1px solid rgba(90,184,114,0.25)",borderRadius:4,fontSize:11,color:"#5ab872"}}>
-          <strong>Import complete.</strong> {importStats.added} added · {importStats.updated} refreshed · {importStats.unchanged} unchanged
+        <div style={{marginTop:12,padding:"10px 14px",background:"rgba(26,18,0,0.85)",border:`1px solid ${GOLD}`,borderRadius:4,fontSize:11,color:GOLD,fontWeight:600}}>
+          <strong style={{color:"#fff"}}>Import complete.</strong> {importStats.added} added · {importStats.updated} refreshed · {importStats.unchanged} unchanged
           {importStats.skipped > 0 && <span> · {importStats.skipped} skipped (missing required fields)</span>}
           {" "}· {importStats.total} total in master.
         </div>
@@ -4189,9 +4223,9 @@ function CustomerListAdmin() {
 
       {/* Column mapping UI (staged file) */}
       {pendingRows && pendingHeaders && (
-        <div style={{marginTop:16,padding:16,background:"rgba(0,0,0,0.25)",border:"1px dashed rgba(197,165,90,0.3)",borderRadius:6}}>
-          <div style={{fontSize:11,fontWeight:700,color:GOLD,marginBottom:4,letterSpacing:0.5}}>Staged: {pendingFilename} ({pendingRows.length} rows)</div>
-          <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginBottom:14,lineHeight:1.5}}>
+        <div style={{marginTop:16,padding:16,background:"rgba(26,18,0,0.85)",border:"1px solid #1a1200",borderRadius:6}}>
+          <div style={{fontSize:12,fontWeight:900,color:GOLD,marginBottom:4,letterSpacing:0.5}}>Staged: {pendingFilename} ({pendingRows.length} rows)</div>
+          <div style={{fontSize:11,color:"rgba(232,212,138,0.85)",marginBottom:14,lineHeight:1.5}}>
             Confirm the column mapping below. Auto-detected from your file's header row. Required: Branch, Cust ID, Ship To Number.
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))",gap:12,marginBottom:16}}>
@@ -4199,12 +4233,12 @@ function CustomerListAdmin() {
               const isRequired = ['branch','custId','shipToNumber'].includes(field);
               return (
                 <div key={field}>
-                  <label style={labelStyle}>
+                  <label style={{fontSize:10,fontWeight:900,letterSpacing:1,color:GOLD,textTransform:"uppercase",marginBottom:4,display:"block"}}>
                     {DEFAULT_COLMAP[field]}
-                    {isRequired && <span style={{color:"#e85a5a",marginLeft:4}}>*</span>}
+                    {isRequired && <span style={{color:"#ff8080",marginLeft:4}}>*</span>}
                   </label>
                   <select value={colMap[field]||''} onChange={e=>setColMap({...colMap,[field]:e.target.value})}
-                    style={{...inputStyle,width:"100%"}}>
+                    style={{background:"rgba(255,255,255,0.95)",border:"1px solid "+GOLD,borderRadius:4,color:"#0a0a0a",padding:"8px 10px",fontSize:12,fontWeight:600,width:"100%"}}>
                     <option value="">— not mapped —</option>
                     {pendingHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                   </select>
@@ -4214,11 +4248,11 @@ function CustomerListAdmin() {
           </div>
           <div style={{display:"flex",gap:10}}>
             <button onClick={commitImport}
-              style={{padding:"9px 18px",borderRadius:6,border:`1px solid ${GOLD}`,background:GOLD,color:"#000",fontSize:11,fontWeight:900,letterSpacing:0.8,cursor:"pointer"}}>
+              style={{padding:"10px 20px",borderRadius:6,border:`1px solid ${GOLD}`,background:`linear-gradient(180deg,#E8D48A 0%,${GOLD} 100%)`,color:"#0a0a0a",fontSize:11,fontWeight:900,letterSpacing:0.8,cursor:"pointer",boxShadow:"0 2px 6px rgba(0,0,0,0.4)"}}>
               Commit Import
             </button>
             <button onClick={cancelStaged}
-              style={{padding:"9px 18px",borderRadius:6,border:"1px solid rgba(255,255,255,0.2)",background:"transparent",color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:700,letterSpacing:0.8,cursor:"pointer"}}>
+              style={{padding:"10px 18px",borderRadius:6,border:"1px solid rgba(232,212,138,0.4)",background:"transparent",color:"rgba(232,212,138,0.85)",fontSize:10,fontWeight:700,letterSpacing:0.8,cursor:"pointer"}}>
               Cancel
             </button>
           </div>
@@ -4240,10 +4274,16 @@ function CustomerPricingAdmin({effectiveCat}) {
      and reacts to changes on mount. No import state needed locally. */
   const [customerList, setCustomerList] = useState(() => loadCustomerList());
 
-  /* ───────── State: customer selector ───────── */
-  const [selectedBranch, setSelectedBranch]       = useState(null);
-  const [selectedCustId, setSelectedCustId]       = useState(null);
-  const [selectedShipToNumber, setSelectedShipToNumber] = useState(null);
+  /* ───────── State: customer selector ─────────
+     Stage 1B.3: initialize from localStorage so the admin's selection
+     survives navigating away to the Lookup page and back. We validate
+     against the current customer list after it loads — if the saved
+     key no longer exists (e.g., re-import dropped that ship-to), we
+     silently clear and start fresh. */
+  const _savedSel = (typeof loadSelectedCustomer === 'function') ? loadSelectedCustomer() : null;
+  const [selectedBranch, setSelectedBranch]       = useState(_savedSel ? _savedSel.branch : null);
+  const [selectedCustId, setSelectedCustId]       = useState(_savedSel ? _savedSel.custId : null);
+  const [selectedShipToNumber, setSelectedShipToNumber] = useState(_savedSel ? _savedSel.shipToNumber : null);
   const [custSearch, setCustSearch] = useState('');
 
   /* Derived: index the customer list for fast cascading lookup. Memoized
@@ -4275,6 +4315,22 @@ function CustomerPricingAdmin({effectiveCat}) {
       setSelectedBranch(null); setSelectedCustId(null); setSelectedShipToNumber(null);
     }
   }, [availableBranches.join('|')]);   // eslint-disable-line
+
+  /* Stage 1B.3: validate the restored selection against the loaded customer
+     index. If the saved (branch/custId/shipToNumber) no longer exists
+     (re-imported master dropped it, etc.), clear silently so the UI resets
+     to the search state instead of silently pointing at a ghost customer. */
+  useEffect(() => {
+    if (!selectedBranch || !selectedCustId || !selectedShipToNumber) return;
+    if (!customerIndex || customerIndex.size === 0) return;   // list still loading
+    const custs = customerIndex.get(selectedBranch);
+    const cust = custs ? custs.get(selectedCustId) : null;
+    const shipTo = cust ? cust.shipTos.find(s => s.shipToNumber === selectedShipToNumber) : null;
+    if (!shipTo) {
+      setSelectedBranch(null); setSelectedCustId(null); setSelectedShipToNumber(null);
+      clearSelectedCustomer();
+    }
+  }, [customerIndex, selectedBranch, selectedCustId, selectedShipToNumber]);
 
   const availableCustomers = useMemo(() => {
     if (!selectedBranch || !customerIndex.has(selectedBranch)) return [];
@@ -4369,6 +4425,8 @@ function CustomerPricingAdmin({effectiveCat}) {
     setSelectedCustId(row.custId);
     setSelectedShipToNumber(row.shipToNumber);
     setCustSearch('');   // collapse the results list once something is picked
+    /* Stage 1B.3: persist the selection so it survives page navigation. */
+    saveSelectedCustomer({ branch: row.branch, custId: row.custId, shipToNumber: row.shipToNumber });
   };
 
   /* ═════════════════════════════════════════════════════════════════════
@@ -4514,11 +4572,14 @@ function CustomerPricingAdmin({effectiveCat}) {
     if (costStr) {
       const n = Number(costStr);
       if (!isFinite(n) || n < 0) { setFormError('Their Cost must be a non-negative number.'); return; }
-      /* Hard 2× guardrail. The reference price is shown in the form so
-         the user understands why the block fired. Zero-cost entries skip
-         the guardrail since 0 is never 2× anything meaningful. */
-      if (n > 0 && currentLevel1 > 0 && n >= 2 * currentLevel1) {
-        setFormError(`Their Cost ($${n.toFixed(2)}) is ≥ 2× Level 1 ($${currentLevel1.toFixed(2)}). Double-check — blocked as a safety guardrail.`);
+      /* Stage 1B.3: replaced the 2× upper guardrail with a 40%-of-Level-1
+         floor. Anything more than 60% below Level 1 is almost certainly a
+         data-entry error. The floor check only runs when Level 1 is known
+         and the entered cost is positive — zero-cost entries (admin
+         explicitly setting free) bypass the floor. */
+      if (n > 0 && currentLevel1 > 0 && n < 0.4 * currentLevel1) {
+        const floor = 0.4 * currentLevel1;
+        setFormError(`Their Cost ($${n.toFixed(2)}) is below the $${floor.toFixed(2)} floor (40% of Level 1 $${currentLevel1.toFixed(2)}). Anything more than 60% below Level 1 is blocked — double-check the number.`);
         return;
       }
       cost = n;
@@ -4560,14 +4621,14 @@ function CustomerPricingAdmin({effectiveCat}) {
   };
 
   /* ───────── Rendering ───────── */
-  /* Cards use a distinctly darker interior + stronger gold border so they
-     read as separate surfaces against the dark page background. The old
-     rgba(197,165,90,0.03) tint was effectively invisible. */
-  const cardStyle = {background:"rgba(0,0,0,0.38)",border:"1px solid rgba(197,165,90,0.35)",borderRadius:8,padding:20,marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.25)"};
-  const cardHeaderStyle = {fontSize:12,fontWeight:900,color:GOLD,letterSpacing:1.5,marginBottom:4,textTransform:'uppercase'};
-  const cardSublineStyle = {fontSize:10,color:"rgba(255,255,255,0.45)",marginBottom:16,lineHeight:1.5};
-  const inputStyle = {background:"rgba(0,0,0,0.3)",border:"1px solid rgba(197,165,90,0.2)",borderRadius:4,color:"#fff",padding:"8px 10px",fontSize:12,fontFamily:"inherit"};
-  const labelStyle = {fontSize:9,fontWeight:700,letterSpacing:1,color:"rgba(197,165,90,0.75)",textTransform:"uppercase",marginBottom:4,display:"block"};
+  /* Stage 1B.3: contrast pass. Cards get a slightly stronger dark fill plus
+     a fuller gold border so they read as clearly separated surfaces.
+     Headers bump to 13px + tighter letter-spacing for legibility. */
+  const cardStyle = {background:"linear-gradient(145deg,rgba(0,0,0,0.55) 0%,rgba(0,0,0,0.42) 100%)",border:`1px solid ${GOLD}`,borderRadius:8,padding:22,marginBottom:18,boxShadow:"0 4px 12px rgba(0,0,0,0.45), inset 0 1px 0 rgba(197,165,90,0.15)"};
+  const cardHeaderStyle = {fontSize:13,fontWeight:900,color:GOLD,letterSpacing:1.8,marginBottom:5,textTransform:'uppercase'};
+  const cardSublineStyle = {fontSize:11,color:"rgba(255,255,255,0.6)",marginBottom:16,lineHeight:1.5};
+  const inputStyle = {background:"rgba(0,0,0,0.55)",border:`1px solid ${GOLD}`,borderRadius:4,color:"#fff",padding:"9px 11px",fontSize:12,fontFamily:"inherit",fontWeight:600};
+  const labelStyle = {fontSize:10,fontWeight:900,letterSpacing:1.2,color:GOLD,textTransform:"uppercase",marginBottom:5,display:"block"};
 
   const totalRows = (customerList && customerList.rows) ? customerList.rows.length : 0;
   const totalCustomers = customerIndex.size === 0 ? 0 :
@@ -4576,15 +4637,15 @@ function CustomerPricingAdmin({effectiveCat}) {
   return (
     <div style={{color:"#fff",animation:"fadeIn 0.2s ease"}}>
       {/* Page header */}
-      <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:20,paddingBottom:14,borderBottom:"1px solid rgba(197,165,90,0.18)"}}>
+      <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:22,paddingBottom:16,borderBottom:`2px solid ${GOLD}`}}>
         <div>
-          <div style={{fontSize:20,fontWeight:900,color:"#fff",letterSpacing:0.5}}>Customer Pricing</div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.45)",marginTop:4,lineHeight:1.4}}>
-            Per-customer cost overrides and SKU cross-references for the <span style={{color:GOLD,fontWeight:700}}>Mouldings</span> section.
+          <div style={{fontSize:22,fontWeight:900,color:"#fff",letterSpacing:0.5}}>Customer Pricing</div>
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.72)",marginTop:5,lineHeight:1.5}}>
+            Per-customer cost overrides and SKU cross-references for the <span style={{color:GOLD,fontWeight:800}}>Mouldings</span> section.
             Overrides replace Level 1 on the customer-facing portal and display in green with the customer's markup applied.
           </div>
         </div>
-        <span style={{fontSize:9,padding:"3px 8px",borderRadius:10,background:"rgba(197,165,90,0.08)",border:"1px solid rgba(197,165,90,0.2)",color:GOLD,letterSpacing:0.8,fontWeight:700}}>v32 · STAGE 1B.1</span>
+        <span style={{fontSize:10,padding:"4px 10px",borderRadius:10,background:"linear-gradient(180deg,#1a1a1a 0%,#000 100%)",border:`1px solid ${GOLD}`,color:GOLD,letterSpacing:0.8,fontWeight:900,fontFamily:"'IBM Plex Mono',monospace"}}>v32 · STAGE 1B.3</span>
       </div>
 
       {/* ─── CARD 2: CUSTOMER SELECTOR (unified search) ─── */}
@@ -4673,7 +4734,7 @@ function CustomerPricingAdmin({effectiveCat}) {
                 </div>
               </div>
               <button
-                onClick={()=>{ setSelectedBranch(null); setSelectedCustId(null); setSelectedShipToNumber(null); setCustSearch(''); }}
+                onClick={()=>{ setSelectedBranch(null); setSelectedCustId(null); setSelectedShipToNumber(null); setCustSearch(''); clearSelectedCustomer(); }}
                 style={{padding:"6px 12px",background:"transparent",color:"rgba(255,255,255,0.75)",border:"1px solid rgba(197,165,90,0.35)",borderRadius:4,fontSize:10,fontWeight:700,letterSpacing:0.8,textTransform:"uppercase",cursor:"pointer",whiteSpace:"nowrap"}}
               >
                 Change
@@ -4784,21 +4845,23 @@ function CustomerPricingAdmin({effectiveCat}) {
                   placeholder="0.00"
                   style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'IBM Plex Mono',monospace"}}
                 />
+                {/* Stage 1B.3: Level 1 reference sits directly under Their Cost
+                    so the admin sees the benchmark the moment they enter a
+                    number. Floor is shown next to the ref for transparency. */}
+                {matchedRow && substrate && currentLevel1 > 0 && (
+                  <div style={{marginTop:6,fontSize:10,color:"rgba(255,255,255,0.55)",lineHeight:1.4}}>
+                    Level 1: <span style={{color:GOLD,fontFamily:"'IBM Plex Mono',monospace",fontWeight:700}}>${currentLevel1.toFixed(2)}/{currentUom}</span>
+                    <span style={{color:"rgba(255,255,255,0.3)",margin:"0 6px"}}>·</span>
+                    Floor: <span style={{color:"rgba(255,180,120,0.9)",fontFamily:"'IBM Plex Mono',monospace",fontWeight:700}}>${(currentLevel1*0.4).toFixed(2)}</span>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Reference line + inline warnings */}
-            {matchedRow && substrate && (
-              <div style={{display:"flex",gap:14,alignItems:"center",marginBottom:12,fontSize:10,color:"rgba(255,255,255,0.55)",flexWrap:"wrap"}}>
-                <span>Level 1 reference: <span style={{color:GOLD,fontFamily:"'IBM Plex Mono',monospace",fontWeight:700}}>${currentLevel1.toFixed(2)}/{currentUom}</span></span>
-                <span style={{color:"rgba(255,255,255,0.3)"}}>·</span>
-                <span>Guardrail blocks Their Cost ≥ <span style={{color:"rgba(255,180,120,0.9)",fontFamily:"'IBM Plex Mono',monospace"}}>${(currentLevel1*2).toFixed(2)}</span></span>
-                {theirSkuCollision && (
-                  <>
-                    <span style={{color:"rgba(255,255,255,0.3)"}}>·</span>
-                    <span style={{color:"rgba(255,200,100,0.9)"}}>⚠ Their SKU matches an existing catalog root SKU</span>
-                  </>
-                )}
+            {/* Inline warnings (Level 1 ref moved next to Their Cost input in Stage 1B.3) */}
+            {matchedRow && substrate && theirSkuCollision && (
+              <div style={{display:"flex",gap:14,alignItems:"center",marginBottom:12,fontSize:10,color:"rgba(255,200,100,0.9)",flexWrap:"wrap"}}>
+                <span>⚠ Their SKU matches an existing catalog root SKU</span>
               </div>
             )}
 
@@ -4905,6 +4968,24 @@ function StatPill({label, value}) {
 
 function App() {
   const [user, setUser] = useState(null);
+  /* Stage 1B.3: main-page nav button styling helper. Black gradient + gold
+     border + bold gold text. When active (current page) the gold fills and
+     the text inverts to black, so the current tab is unmistakable. */
+  const navBtnStyle = (active) => active ? {
+    padding:"7px 16px", borderRadius:6,
+    border:`1px solid ${GOLD}`,
+    background:`linear-gradient(180deg,#E8D48A 0%,${GOLD} 100%)`,
+    color:"#0a0a0a", fontSize:11, fontWeight:900, letterSpacing:0.5, cursor:"pointer",
+    boxShadow:"0 1px 4px rgba(197,165,90,0.35), inset 0 1px 0 rgba(255,255,255,0.25)",
+    textTransform:"none",
+  } : {
+    padding:"7px 16px", borderRadius:6,
+    border:`1px solid ${GOLD}`,
+    background:"linear-gradient(180deg,#1a1a1a 0%,#000 100%)",
+    color:GOLD, fontSize:11, fontWeight:900, letterSpacing:0.5, cursor:"pointer",
+    boxShadow:"0 1px 3px rgba(0,0,0,0.5)",
+    textTransform:"none",
+  };
   /* v21: Ensure the page starts at the top whenever the user logs in (or on app mount
      with a pre-authenticated session). Prevents the PricingBar/Multiplier from being
      hidden behind the sticky header due to restored browser scroll position. */
@@ -5253,12 +5334,16 @@ function App() {
               <div style={{marginLeft:2}}><div style={{fontSize:17,fontWeight:900,color:"#fff",letterSpacing:1.5,lineHeight:1}}>GARDEN STATE LUMBER</div><div style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:2.5,marginTop:4}}>PRICE PORTAL</div></div>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <button onClick={()=>setPage(page==="admin"?"portal":"admin")} style={{padding:"7px 16px",borderRadius:6,border:page==="admin"?"1px solid rgba(197,165,90,0.3)":"1px solid rgba(255,255,255,0.06)",background:page==="admin"?"rgba(197,165,90,0.12)":"transparent",color:page==="admin"?GOLD:"rgba(255,255,255,0.35)",fontSize:11,fontWeight:700,cursor:"pointer"}}>{page==="admin"?"← Back to Pricing":"Pricing Settings"}</button>
-              <button onClick={()=>setPage(page==="productadmin"?"portal":"productadmin")} style={{padding:"7px 16px",borderRadius:6,border:page==="productadmin"?"1px solid rgba(197,165,90,0.3)":"1px solid rgba(255,255,255,0.06)",background:page==="productadmin"?"rgba(197,165,90,0.12)":"transparent",color:page==="productadmin"?GOLD:"rgba(255,255,255,0.35)",fontSize:11,fontWeight:700,cursor:"pointer"}}>{page==="productadmin"?"← Back to Pricing":"Admin"}</button>
+              {/* Stage 1B.3: nav buttons restyled — black gradient + gold border + bold gold text.
+                  Active page inverts to a filled gold background with black text. */}
+              <button onClick={()=>setPage(page==="admin"?"portal":"admin")} style={navBtnStyle(page==="admin")}>{page==="admin"?"← Back to Pricing":"Pricing Settings"}</button>
+              <button onClick={()=>setPage(page==="productadmin"?"portal":"productadmin")} style={navBtnStyle(page==="productadmin")}>{page==="productadmin"?"← Back to Pricing":"Admin"}</button>
               {/* v32: Customer Pricing tab — customer-scoped cost overrides for Mouldings. */}
-              <button onClick={()=>setPage(page==="customerpricing"?"portal":"customerpricing")} style={{padding:"7px 16px",borderRadius:6,border:page==="customerpricing"?"1px solid rgba(197,165,90,0.3)":"1px solid rgba(255,255,255,0.06)",background:page==="customerpricing"?"rgba(197,165,90,0.12)":"transparent",color:page==="customerpricing"?GOLD:"rgba(255,255,255,0.35)",fontSize:11,fontWeight:700,cursor:"pointer"}}>{page==="customerpricing"?"← Back to Pricing":"Customer Pricing"}</button>
+              <button onClick={()=>setPage(page==="customerpricing"?"portal":"customerpricing")} style={navBtnStyle(page==="customerpricing")}>{page==="customerpricing"?"← Back to Pricing":"Customer Pricing"}</button>
               {tiersLoaded && <span style={{fontSize:9,color:"#4ade80",fontWeight:600,display:"inline-flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:"#4ade80",display:"inline-block"}}></span>DB</span>}
-              <button onClick={()=>setUser(null)} style={{padding:"6px 12px",borderRadius:6,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"rgba(255,255,255,0.3)",fontSize:10,fontWeight:600,cursor:"pointer",marginLeft:4}}>Sign Out</button>
+              {/* Stage 1B.3: persistent version chip so the running version is always visible on the main page. */}
+              <span style={{fontSize:9,padding:"4px 9px",borderRadius:10,background:"linear-gradient(180deg,#1a1a1a 0%,#000 100%)",border:`1px solid ${GOLD}`,color:GOLD,letterSpacing:0.8,fontWeight:900,fontFamily:"'IBM Plex Mono',monospace",marginLeft:4}}>v32 · 1B.3</span>
+              <button onClick={()=>setUser(null)} style={{...navBtnStyle(false),padding:"7px 14px",fontSize:10,marginLeft:4}}>Sign Out</button>
             </div>
           </div>
         </div>
