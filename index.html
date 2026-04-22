@@ -3976,11 +3976,15 @@ function SectionVisualSelector({ sec, setSec, setS4sFilter, effectiveCat }) {
            users recognize the retail brand, not the Cust ID
          - Selection produces a customerKey used by the pricing surface
 
-     (3) PRICING ENTRY — STAGE 1B PLACEHOLDER
-         - The entry surface (SKU+substrate selector, UOM auto-lookup,
-           their SKU / their cost fields, validation) is the next build.
-         - Stage 1A renders a scaffolded panel with clear "coming next"
-           messaging so the architecture is visible end-to-end.
+     (3) PRICING ENTRY — STAGE 1B (shipped)
+         - Entry form (root-SKU autocomplete, dependent substrate dropdown,
+           auto-UOM, 2× Level 1 guardrail, theirSku collision warning)
+         - Per-customer overrides table with edit/delete, sorted most-
+           recently-updated first.
+         - Persists to localStorage under gsl_customer_pricing.
+
+     Stage 1B.1 adds: unified ship-to search (replaces cascading
+     dropdowns), darker card surfaces for visual separation.
 
    Applicable only to the Mouldings section per spec. Pricing overrides
    written here replace Level 1 on the customer-facing portal (green-text
@@ -4090,6 +4094,49 @@ function CustomerPricingAdmin({effectiveCat}) {
     if (!selectedShipToNumber) return null;
     return availableShipTos.find(s => s.shipToNumber === selectedShipToNumber) || null;
   }, [selectedShipToNumber, availableShipTos]);
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     UNIFIED SHIP-TO SEARCH
+     ─────────────────────────────────────────────────────────────────────
+     Flat-list search across all customer-master rows. Users type any
+     fragment and we match against customer name, ship-to name, city,
+     address, state, or cust-ID. Results are the ship-to rows themselves
+     (not grouped by customer) so one click picks the exact location.
+     Capped at 25 results to keep the list scannable — if there are more
+     matches, the user should type more characters.
+     ═══════════════════════════════════════════════════════════════════════ */
+  const shipToMatches = useMemo(() => {
+    const rows = (customerList && customerList.rows) || [];
+    const q = custSearch.trim().toLowerCase();
+    if (!q) return [];
+    const tokens = q.split(/\s+/).filter(Boolean);
+    /* Each row must match EVERY whitespace-separated token somewhere in
+       its searchable fields. This AND-semantics lets users narrow with
+       extra words: "universal chicago" surfaces only Chicago locations. */
+    const matches = [];
+    for (const r of rows) {
+      const hay = [
+        r.customerName, r.shipToName, r.custId, r.shipToNumber,
+        r.address1, r.address2, r.city, r.state, r.zip, r.branch,
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (tokens.every(t => hay.includes(t))) {
+        matches.push(r);
+        if (matches.length >= 25) break;
+      }
+    }
+    return matches;
+  }, [customerList, custSearch]);
+
+  /* One-click ship-to selection: populates branch/custId/shipToNumber in
+     a single atomic state update so Card 3 unlocks immediately. The
+     cascading flow required three separate picks and had no visible link
+     between them — this collapses that into one gesture. */
+  const pickShipTo = (row) => {
+    setSelectedBranch(row.branch);
+    setSelectedCustId(row.custId);
+    setSelectedShipToNumber(row.shipToNumber);
+    setCustSearch('');   // collapse the results list once something is picked
+  };
 
   /* ───────── File upload handler (xlsx + csv) ───────── */
   const handleFile = (file) => {
@@ -4364,7 +4411,10 @@ function CustomerPricingAdmin({effectiveCat}) {
   };
 
   /* ───────── Rendering ───────── */
-  const cardStyle = {background:"rgba(197,165,90,0.03)",border:"1px solid rgba(197,165,90,0.18)",borderRadius:8,padding:20,marginBottom:16};
+  /* Cards use a distinctly darker interior + stronger gold border so they
+     read as separate surfaces against the dark page background. The old
+     rgba(197,165,90,0.03) tint was effectively invisible. */
+  const cardStyle = {background:"rgba(0,0,0,0.38)",border:"1px solid rgba(197,165,90,0.35)",borderRadius:8,padding:20,marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.25)"};
   const cardHeaderStyle = {fontSize:12,fontWeight:900,color:GOLD,letterSpacing:1.5,marginBottom:4,textTransform:'uppercase'};
   const cardSublineStyle = {fontSize:10,color:"rgba(255,255,255,0.45)",marginBottom:16,lineHeight:1.5};
   const inputStyle = {background:"rgba(0,0,0,0.3)",border:"1px solid rgba(197,165,90,0.2)",borderRadius:4,color:"#fff",padding:"8px 10px",fontSize:12,fontFamily:"inherit"};
@@ -4385,7 +4435,7 @@ function CustomerPricingAdmin({effectiveCat}) {
             Overrides replace Level 1 on the customer-facing portal and display in green with the customer's markup applied.
           </div>
         </div>
-        <span style={{fontSize:9,padding:"3px 8px",borderRadius:10,background:"rgba(197,165,90,0.08)",border:"1px solid rgba(197,165,90,0.2)",color:GOLD,letterSpacing:0.8,fontWeight:700}}>v32 · STAGE 1B</span>
+        <span style={{fontSize:9,padding:"3px 8px",borderRadius:10,background:"rgba(197,165,90,0.08)",border:"1px solid rgba(197,165,90,0.2)",color:GOLD,letterSpacing:0.8,fontWeight:700}}>v32 · STAGE 1B.1</span>
       </div>
 
       {/* ─── CARD 1: CUSTOMER MASTER LIST ─── */}
@@ -4477,78 +4527,97 @@ function CustomerPricingAdmin({effectiveCat}) {
       </div>
 
       {/* ─── CARD 2: CUSTOMER SELECTOR ─── */}
+      {/* ─── CARD 2: CUSTOMER SELECTOR (unified search) ─── */}
       <div style={cardStyle}>
         <div style={cardHeaderStyle}>Select Customer</div>
         <div style={cardSublineStyle}>
-          Pick the Branch, Customer, and Ship-to location whose pricing overrides you want to manage. The ship-to name is the primary identifier — holding companies often operate many retail brands.
+          Search across customer names, ship-to brands, cities, and addresses. Click a result to lock in that ship-to — the rest of the page will unlock for pricing entry.
         </div>
 
         {totalRows === 0 ? (
           <div style={{padding:"30px 20px",textAlign:"center",background:"rgba(0,0,0,0.2)",border:"1px dashed rgba(197,165,90,0.2)",borderRadius:6,color:"rgba(255,255,255,0.45)",fontSize:11}}>
             No customer master list loaded yet. Import a file above to get started.
           </div>
-        ) : (
-          <div style={{display:"grid",gridTemplateColumns:"180px 1fr 1.2fr",gap:14}}>
-            {/* Branch */}
-            <div>
-              <label style={labelStyle}>Branch</label>
-              <select value={selectedBranch||''} onChange={e=>{setSelectedBranch(e.target.value||null); setSelectedCustId(null); setSelectedShipToNumber(null);}}
-                style={{...inputStyle,width:"100%"}}>
-                <option value="">— select branch —</option>
-                {availableBranches.map(b => <option key={b} value={b}>{b}</option>)}
-              </select>
-            </div>
+        ) : !selectedShipTo ? (
+          /* ───── Search mode: no ship-to picked yet ─────
+             Single input; typing filters across all customer-master fields.
+             Results render as clickable rows with full context (customer,
+             ship-to, address, city) so it's obvious which location each is. */
+          <div>
+            <label style={labelStyle}>Find a ship-to</label>
+            <input
+              type="text"
+              placeholder="Search customer, ship-to, city, address…"
+              value={custSearch}
+              onChange={e=>setCustSearch(e.target.value)}
+              autoFocus
+              style={{...inputStyle,width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"}}
+            />
 
-            {/* Customer (searchable) */}
-            <div>
-              <label style={labelStyle}>Customer</label>
-              <input type="text" placeholder="Search by customer, Cust ID, or ship-to brand…"
-                value={custSearch} onChange={e=>setCustSearch(e.target.value)}
-                disabled={!selectedBranch}
-                style={{...inputStyle,width:"100%",marginBottom:6,opacity:selectedBranch?1:0.4}}/>
-              <select value={selectedCustId||''} onChange={e=>{setSelectedCustId(e.target.value||null); setSelectedShipToNumber(null);}}
-                disabled={!selectedBranch}
-                style={{...inputStyle,width:"100%",opacity:selectedBranch?1:0.4}}
-                size={Math.min(8, Math.max(3, availableCustomers.length))}>
-                {availableCustomers.length === 0 && <option value="">— no matches —</option>}
-                {availableCustomers.map(c => (
-                  <option key={c.custId} value={c.custId}>
-                    {c.customerName} · {c.custId} ({c.shipTos.length} ship-to{c.shipTos.length===1?'':'s'})
-                  </option>
-                ))}
-              </select>
-            </div>
+            {custSearch.trim() && shipToMatches.length === 0 && (
+              <div style={{marginTop:10,padding:"14px",textAlign:"center",background:"rgba(0,0,0,0.25)",border:"1px dashed rgba(197,165,90,0.15)",borderRadius:4,color:"rgba(255,255,255,0.4)",fontSize:11}}>
+                No ship-tos match "{custSearch}". Try a different term.
+              </div>
+            )}
 
-            {/* Ship To */}
-            <div>
-              <label style={labelStyle}>Ship To</label>
-              <select value={selectedShipToNumber||''} onChange={e=>setSelectedShipToNumber(e.target.value||null)}
-                disabled={!selectedCustomer}
-                style={{...inputStyle,width:"100%",opacity:selectedCustomer?1:0.4}}
-                size={Math.min(8, Math.max(3, availableShipTos.length))}>
-                {availableShipTos.length === 0 && <option value="">— select a customer first —</option>}
-                {availableShipTos.map(s => (
-                  <option key={s.shipToNumber} value={s.shipToNumber}>
-                    {s.shipToName} · #{s.shipToNumber}
-                  </option>
+            {shipToMatches.length > 0 && (
+              <div style={{marginTop:10,background:"rgba(0,0,0,0.3)",border:"1px solid rgba(197,165,90,0.2)",borderRadius:4,maxHeight:360,overflowY:"auto"}}>
+                <div style={{padding:"6px 12px",fontSize:9,fontWeight:700,letterSpacing:1,color:"rgba(197,165,90,0.6)",textTransform:"uppercase",borderBottom:"1px solid rgba(197,165,90,0.12)",background:"rgba(197,165,90,0.04)"}}>
+                  {shipToMatches.length >= 25 ? "25+ matches — type more to narrow" : `${shipToMatches.length} ${shipToMatches.length===1?"match":"matches"}`}
+                </div>
+                {shipToMatches.map(r => (
+                  <div
+                    key={`${r.branch}::${r.custId}::${r.shipToNumber}`}
+                    onClick={()=>pickShipTo(r)}
+                    style={{padding:"10px 12px",cursor:"pointer",borderBottom:"1px solid rgba(197,165,90,0.08)",transition:"background 0.12s"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="rgba(197,165,90,0.08)"}
+                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                  >
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:12,marginBottom:3}}>
+                      <div style={{fontSize:12,fontWeight:700,color:"#fff"}}>{r.shipToName || <span style={{color:"rgba(255,255,255,0.4)",fontStyle:"italic"}}>(no ship-to name)</span>}</div>
+                      <div style={{fontSize:9,color:"rgba(197,165,90,0.65)",fontFamily:"'IBM Plex Mono',monospace",whiteSpace:"nowrap"}}>
+                        {r.branch} · {r.custId} · #{r.shipToNumber}
+                      </div>
+                    </div>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.6)",marginBottom:2}}>{r.customerName}</div>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.42)",lineHeight:1.4}}>
+                      {r.address1}{r.address2?`, ${r.address2}`:""}{r.address1?" · ":""}{r.city}{r.state?`, ${r.state}`:""} {r.zip||""}
+                    </div>
+                  </div>
                 ))}
-              </select>
-            </div>
+              </div>
+            )}
+
+            {!custSearch.trim() && (
+              <div style={{marginTop:10,padding:"14px",textAlign:"center",background:"rgba(0,0,0,0.2)",border:"1px dashed rgba(197,165,90,0.12)",borderRadius:4,color:"rgba(255,255,255,0.4)",fontSize:11}}>
+                Start typing above to find a ship-to. {totalRows.toLocaleString()} rows loaded.
+              </div>
+            )}
           </div>
-        )}
+        ) : null}
 
-        {/* Selected address preview */}
+        {/* Selected ship-to preview + change-selection action */}
         {selectedShipTo && (
-          <div style={{marginTop:16,padding:"12px 16px",background:"rgba(197,165,90,0.06)",borderLeft:`3px solid ${GOLD}`,borderRadius:"0 4px 4px 0"}}>
-            <div style={{fontSize:10,color:"rgba(197,165,90,0.75)",fontWeight:700,letterSpacing:1,marginBottom:4}}>SELECTED</div>
-            <div style={{fontSize:13,fontWeight:700,color:"#fff",marginBottom:2}}>{selectedShipTo.shipToName}</div>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",lineHeight:1.5}}>
-              {selectedShipTo.customerName} · Cust ID {selectedShipTo.custId} · Ship To #{selectedShipTo.shipToNumber}<br/>
-              {selectedShipTo.address1}{selectedShipTo.address2?`, ${selectedShipTo.address2}`:''}<br/>
-              {selectedShipTo.city}, {selectedShipTo.state} {selectedShipTo.zip}
-            </div>
-            <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",marginTop:6,fontFamily:"'IBM Plex Mono',monospace"}}>
-              customerKey: {makeCustomerKey(selectedShipTo.branch, selectedShipTo.custId, selectedShipTo.shipToNumber)}
+          <div style={{marginTop:0,padding:"14px 16px",background:"rgba(197,165,90,0.08)",borderLeft:`3px solid ${GOLD}`,borderRadius:"0 4px 4px 0"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:10,color:"rgba(197,165,90,0.8)",fontWeight:700,letterSpacing:1,marginBottom:4}}>SELECTED SHIP-TO</div>
+                <div style={{fontSize:14,fontWeight:700,color:"#fff",marginBottom:3}}>{selectedShipTo.shipToName}</div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.55)",lineHeight:1.5}}>
+                  {selectedShipTo.customerName} · Cust ID {selectedShipTo.custId} · Ship To #{selectedShipTo.shipToNumber}<br/>
+                  {selectedShipTo.address1}{selectedShipTo.address2?`, ${selectedShipTo.address2}`:''}<br/>
+                  {selectedShipTo.city}, {selectedShipTo.state} {selectedShipTo.zip}
+                </div>
+                <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",marginTop:6,fontFamily:"'IBM Plex Mono',monospace"}}>
+                  customerKey: {makeCustomerKey(selectedShipTo.branch, selectedShipTo.custId, selectedShipTo.shipToNumber)}
+                </div>
+              </div>
+              <button
+                onClick={()=>{ setSelectedBranch(null); setSelectedCustId(null); setSelectedShipToNumber(null); setCustSearch(''); }}
+                style={{padding:"6px 12px",background:"transparent",color:"rgba(255,255,255,0.75)",border:"1px solid rgba(197,165,90,0.35)",borderRadius:4,fontSize:10,fontWeight:700,letterSpacing:0.8,textTransform:"uppercase",cursor:"pointer",whiteSpace:"nowrap"}}
+              >
+                Change
+              </button>
             </div>
           </div>
         )}
