@@ -1259,7 +1259,7 @@ const G = "#0C1F0E"; const GM = "#1B4332"; const GL = "#2D6A4F"; const GOLD = "#
    the Customer Pricing page. BUMP THIS INTEGER ON EVERY DEPLOY. Simple,
    monotonic, unambiguous — no letter stages, no dotted sub-versions.
    Whatever was live before gets +1 on the next ship. */
-const VERSION = 34;
+const VERSION = 35;
 const VERSION_LABEL = `v${VERSION}`;
 
 /* Sort lengths numerically shortest first: "16', 8'" → "8', 16'" */
@@ -1862,11 +1862,14 @@ const DEFAULT_PARSING_CONFIG = {
   categoryParsingRules: {
     defaults: {
       sku: {
-        lengthSuffixes:   [], // populated lazily from VARIANT_SUFFIXES / LENGTH_RE
-        variantSuffixes:  [...VARIANT_SUFFIXES],
-        materialSuffixes: [...MATERIAL_SUFFIXES],
+        // v35: defaults are EMPTY. Each category opts in by declaring its
+        // own lists. This prevents rules from one category bleeding into
+        // categories that shouldn't have any stripping (e.g. PVC Trim).
+        variantSuffixes:  [],
+        materialSuffixes: [],
         speciesSuffixes:  [],
         compoundSuffixes: [],
+        stripLength:      false, // numeric length peel is opt-in per category
       },
       description: {
         stripSpeciesTokens: [],
@@ -1877,6 +1880,11 @@ const DEFAULT_PARSING_CONFIG = {
     },
     hardwood_s4s: {
       sku: {
+        stripLength: true,
+        variantSuffixes:  ['-EVEN','-LL','-PLUG','-NL','-X'],
+        // Species layer (below) handles material tails for hardwood; no
+        // generic material-suffix list here.
+        materialSuffixes: [],
         speciesSuffixes: [
           { pattern:'CH',  mapsTo:'cherry',    enabled:true },
           { pattern:'MA',  mapsTo:'maple',     enabled:true },
@@ -1907,6 +1915,11 @@ const DEFAULT_PARSING_CONFIG = {
       sort: { by:['thickness','width','sku'], order:['asc','asc','asc'] },
     },
     mouldings: {
+      sku: {
+        stripLength: true,
+        variantSuffixes:  ['-EVEN','-LL','-PLUG','-NL','-X'],
+        materialSuffixes: ['PRF','MDF','POP','PP','WO','OAK','PVC','FLX','YP','MRI'],
+      },
       description: {
         stripSpeciesTokens: ['POPLAR','RED OAK','WHITE OAK','PINE','MDF','PVC','FIR','SYP','CEDAR'],
         stripLengthTokens: ['RL','R/L'],
@@ -1919,6 +1932,11 @@ const DEFAULT_PARSING_CONFIG = {
       },
     },
     s4s_trimboards: {
+      sku: {
+        stripLength: true,
+        variantSuffixes:  ['-EVEN','-LL','-PLUG','-NL','-X'],
+        materialSuffixes: ['PRF','MDF','PP','PVC'],
+      },
       description: {
         stripSpeciesTokens: ['PINE','MDF','POPLAR','PRIMED'],
         stripLengthTokens: ['RL','R/L'],
@@ -1930,6 +1948,22 @@ const DEFAULT_PARSING_CONFIG = {
         XLP30Y:'platinum_xl',
       },
     },
+    panels_sheets: {
+      sku: {
+        stripLength: false, // panel SKUs encode thickness/size, don't peel numerics
+        variantSuffixes:  [],
+        materialSuffixes: ['MDF','OAK','AC','BIR','LUAN','MRI','PVC'],
+      },
+      description: {
+        stripSpeciesTokens: [],
+        stripLengthTokens: ['RL','R/L'],
+        stripParentheticals: true,
+      },
+    },
+    // NOTE: Categories not listed (pvc_trim, nucedar, door_jambs, melamine,
+    // plinth_rosettes, blanks, specialty) inherit the empty defaults above,
+    // meaning their SKUs flow through parseCSV untouched. Add explicit rules
+    // here if you need them.
   },
 };
 
@@ -2075,39 +2109,61 @@ function _fractionToFloat(s) {
   return isNaN(n) ? Infinity : n;
 }
 
-function stripSku(rawSku, excludedLengths={}, excludedVariants={}, excludedMaterials={}) {
+/* stripSku — v35: category-scoped SKU tail stripping.
+
+   Takes a per-category `catRules` object (from getCategoryRules). Reads:
+     • catRules.sku.variantSuffixes   — array of strings (e.g. ['-EVEN','-NL'])
+     • catRules.sku.materialSuffixes  — array of strings (e.g. ['PRF','MDF'])
+     • catRules.sku.stripLength       — boolean; when false, skip the numeric
+                                        length peel entirely (lengths stay
+                                        in the SKU)
+   If a list is undefined the stripper skips that layer for that category.
+   This means a category like PVC Trim — which defines no rules at all — gets
+   its SKUs back untouched, which is the correct behavior. */
+function stripSku(rawSku, catRules) {
   let sku = rawSku;
   let length = null;
   let variant = null;
-  
+
+  const skuRules = (catRules && catRules.sku) || {};
+  const variants  = Array.isArray(skuRules.variantSuffixes)  ? skuRules.variantSuffixes  : [];
+  const materials = Array.isArray(skuRules.materialSuffixes) ? skuRules.materialSuffixes : [];
+  const stripLen  = skuRules.stripLength === true; // opt-in; must be explicitly true
+
   // 1. Strip variant suffixes first (-EVEN, -LL, -PLUG, -NL, -X)
-  for (const vs of VARIANT_SUFFIXES) {
-    if (sku.endsWith(vs) && !excludedVariants[vs]) { variant = vs.replace('-',''); sku = sku.slice(0, -vs.length); break; }
-  }
-  
-  // 2. Strip numeric length suffix
-  const lm = sku.match(LENGTH_RE);
-  if (lm) {
-    const fullMatch = lm[0]; // e.g. "-17", "-7.5", "-8NL"
-    const num = lm[1];
-    const numVal = parseFloat(num);
-    if ((numVal >= 7 || num === '4') && !excludedLengths[fullMatch]) {
-      length = num.includes('.') ? num + "'" : num + "'";
-      sku = sku.slice(0, -fullMatch.length);
+  for (const vs of variants) {
+    if (sku.endsWith(vs) && sku.length > vs.length) {
+      variant = vs.replace('-','');
+      sku = sku.slice(0, -vs.length);
+      break;
     }
   }
-  
+
+  // 2. Strip numeric length suffix (only if category opts in)
+  if (stripLen) {
+    const lm = sku.match(LENGTH_RE);
+    if (lm) {
+      const fullMatch = lm[0]; // e.g. "-17", "-7.5", "-8NL"
+      const num = lm[1];
+      const numVal = parseFloat(num);
+      if (numVal >= 7 || num === '4') {
+        length = num.includes('.') ? num + "'" : num + "'";
+        sku = sku.slice(0, -fullMatch.length);
+      }
+    }
+  }
+
   // 3. Strip material suffix to get ROOT sku
   let rootSku = sku;
   let matSuffix = null;
-  for (const ms of MATERIAL_SUFFIXES) {
-    if (sku.endsWith(ms) && sku.length > ms.length && !excludedMaterials[ms]) {
+  for (const ms of materials) {
+    if (sku.endsWith(ms) && sku.length > ms.length) {
       rootSku = sku.slice(0, -ms.length);
       matSuffix = ms;
       break;
     }
   }
-  
+
   return { rootSku, baseSku: sku, length, variant, matSuffix };
 }
 
@@ -2225,7 +2281,9 @@ function parseCSV(text, config) {
     const catRules = getCategoryRules(section, cfg);
 
     // ── LAYER 2a · GENERIC SKU TAIL STRIPPING  (length/variant/material) ─
-    const { rootSku: stripRoot, baseSku, length } = stripSku(sku);
+    //    Now category-scoped: each category provides its own lists. Categories
+    //    with no rules (e.g. PVC Trim) get untouched SKUs.
+    const { rootSku: stripRoot, baseSku, length } = stripSku(sku, catRules);
 
     // ── LAYER 2b · SPECIES / COMPOUND SUFFIX on ALREADY-TAIL-STRIPPED SKU ─
     //    Returns {rootSku, speciesColumn, matched}; speciesColumn wins
