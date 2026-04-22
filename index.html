@@ -1254,6 +1254,14 @@ const GSLLogo = ({size=32}) => (
 /* ─── THEME ─── */
 const G = "#0C1F0E"; const GM = "#1B4332"; const GL = "#2D6A4F"; const GOLD = "#C5A55A"; const CREAM = "#F5F0E1";
 
+/* ─── VERSION ───
+   Single source of truth for the version badge shown in the header and on
+   the Customer Pricing page. BUMP THIS INTEGER ON EVERY DEPLOY. Simple,
+   monotonic, unambiguous — no letter stages, no dotted sub-versions.
+   Whatever was live before gets +1 on the next ship. */
+const VERSION = 33;
+const VERSION_LABEL = `v${VERSION}`;
+
 /* Sort lengths numerically shortest first: "16', 8'" → "8', 16'" */
 const sortLengths = (arr) => {
   if (!arr || arr.length <= 1) return arr;
@@ -2875,7 +2883,7 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
           import flow the same visual weight as customer master.
           ═══════════════════════════════════════════════════════════════ */}
       <div style={{
-        background:"linear-gradient(135deg, #6B3FA0 0%, #1a0033 55%, #0a0a0a 100%)",
+        background:"linear-gradient(135deg, #0a0a0a 0%, #1a0033 45%, #6B3FA0 100%)",
         border:`1px solid ${GOLD}`,
         borderRadius:8, padding:22, marginBottom:18,
         boxShadow:"0 4px 14px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08)"
@@ -4168,6 +4176,7 @@ function CustomerListAdmin() {
   const [customerList, setCustomerList] = useState(() => loadCustomerList());
   const [importStats, setImportStats]   = useState(null);
   const [importError, setImportError]   = useState(null);
+  const [dragOver, setDragOver]         = useState(false);
   const fileRef = useRef(null);
 
   const DEFAULT_COLMAP = {
@@ -4230,6 +4239,16 @@ function CustomerListAdmin() {
     reader.readAsArrayBuffer(file);
   };
 
+  /* 1B.4.1: drag-and-drop support — mirrors the Product Master List card
+     below so the two import flows have identical affordances. Accepts the
+     same file types as the Import button (.xlsx, .xls, .csv). */
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  };
+
   const commitImport = () => {
     if (!pendingRows) return;
     const required = ['branch','custId','shipToNumber'];
@@ -4271,7 +4290,7 @@ function CustomerListAdmin() {
      styles below are scoped to this component and use DARK values so text,
      inputs, and sublines all pop against the gold background. */
   const cardStyle = {
-    background:`linear-gradient(135deg, #E8D48A 0%, ${GOLD} 55%, #A8883A 100%)`,
+    background:`linear-gradient(135deg, #A8883A 0%, ${GOLD} 55%, #E8D48A 100%)`,
     border:"1px solid #7a6525",
     borderRadius:8, padding:22, marginBottom:18,
     boxShadow:"0 4px 14px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.25)"
@@ -4301,7 +4320,7 @@ function CustomerListAdmin() {
 
       {/* Upload + clear */}
       {!pendingRows && (
-        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
           <button onClick={()=>fileRef.current && fileRef.current.click()}
             style={{padding:"10px 20px",borderRadius:6,border:"1px solid #1a1200",background:"linear-gradient(180deg,#1a1a1a 0%,#000 100%)",color:GOLD,fontSize:11,fontWeight:900,letterSpacing:0.8,cursor:"pointer",boxShadow:"0 2px 6px rgba(0,0,0,0.4)"}}>
             + Import Customer File
@@ -4314,6 +4333,23 @@ function CustomerListAdmin() {
               Clear all
             </button>
           )}
+          <span style={{fontSize:10,color:"rgba(26,18,0,0.6)",fontWeight:600,letterSpacing:0.3}}>
+            or drop a file on the zone below
+          </span>
+        </div>
+      )}
+
+      {/* 1B.4.1: drag-and-drop zone — mirrors the Product Master List card.
+          Tertiary path for users who prefer drag-and-drop. Styled for the
+          gold background: darker fill, muted dashed border, dark text. */}
+      {!pendingRows && (
+        <div onDragOver={e=>{e.preventDefault();setDragOver(true)}} onDragLeave={()=>setDragOver(false)} onDrop={handleDrop}
+          style={{marginTop:12,background:dragOver?"rgba(26,18,0,0.18)":"rgba(26,18,0,0.08)",borderRadius:8,padding:"16px",border:`2px dashed ${dragOver?"#1a1200":"rgba(26,18,0,0.32)"}`,textAlign:"center",cursor:"pointer",transition:"all 0.2s"}}
+          onClick={()=>fileRef.current?.click()}>
+          <div style={{fontSize:11,color:dragOver?"#1a1200":"rgba(26,18,0,0.72)",fontWeight:700}}>
+            {dragOver ? "Release to upload" : "Drop customer list file here"}
+          </div>
+          <div style={{fontSize:10,color:"rgba(26,18,0,0.55)",marginTop:3,fontWeight:500}}>Accepts .xlsx, .xls, .csv — headers map automatically</div>
         </div>
       )}
 
@@ -4766,7 +4802,7 @@ function CustomerPricingAdmin({effectiveCat}) {
             Overrides replace Level 1 on the customer-facing portal and display in green with the customer's markup applied.
           </div>
         </div>
-        <span style={{fontSize:10,padding:"4px 10px",borderRadius:10,background:"linear-gradient(180deg,#1a1a1a 0%,#000 100%)",border:`1px solid ${GOLD}`,color:GOLD,letterSpacing:0.8,fontWeight:900,fontFamily:"'IBM Plex Mono',monospace"}}>v32 · STAGE 1B.3</span>
+        <span style={{fontSize:10,padding:"4px 10px",borderRadius:10,background:"linear-gradient(180deg,#1a1a1a 0%,#000 100%)",border:`1px solid ${GOLD}`,color:GOLD,letterSpacing:0.8,fontWeight:900,fontFamily:"'IBM Plex Mono',monospace"}}>{VERSION_LABEL}</span>
       </div>
 
       {/* ─── CARD 2: CUSTOMER SELECTOR (unified search) ─── */}
@@ -5511,7 +5547,7 @@ function App() {
               <button onClick={()=>setPage(page==="customerpricing"?"portal":"customerpricing")} style={navBtnStyle(page==="customerpricing")}>{page==="customerpricing"?"← Back to Pricing":"Customer Pricing"}</button>
               {tiersLoaded && <span style={{fontSize:9,color:"#4ade80",fontWeight:600,display:"inline-flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:"#4ade80",display:"inline-block"}}></span>DB</span>}
               {/* Stage 1B.3: persistent version chip so the running version is always visible on the main page. */}
-              <span style={{fontSize:9,padding:"4px 9px",borderRadius:10,background:"linear-gradient(180deg,#1a1a1a 0%,#000 100%)",border:`1px solid ${GOLD}`,color:GOLD,letterSpacing:0.8,fontWeight:900,fontFamily:"'IBM Plex Mono',monospace",marginLeft:4}}>v32 · 1B.3</span>
+              <span style={{fontSize:9,padding:"4px 9px",borderRadius:10,background:"linear-gradient(180deg,#1a1a1a 0%,#000 100%)",border:`1px solid ${GOLD}`,color:GOLD,letterSpacing:0.8,fontWeight:900,fontFamily:"'IBM Plex Mono',monospace",marginLeft:4}}>{VERSION_LABEL}</span>
               <button onClick={()=>setUser(null)} style={{...navBtnStyle(false),padding:"7px 14px",fontSize:10,marginLeft:4}}>Sign Out</button>
             </div>
           </div>
