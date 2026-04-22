@@ -201,51 +201,102 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 <!-- v32: SheetJS (xlsx parser) for Customer Master List import -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<!-- v36: Supabase JS SDK for real auth + session management -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script type="text/babel">
 const { useState, useMemo, useCallback, useEffect, useRef } = React;
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SUPABASE CONNECTION — using raw fetch() (no CDN library needed)
+   SUPABASE CONNECTION — v36: real Supabase Auth + JWT-backed REST calls
+   ═══════════════════════════════════════════════════════════════════════════
+   The anon key is still embedded here (it's a public key by design), but it's
+   now a *pre-auth* credential only. After a user logs in via supabase.auth,
+   the SDK stores their JWT in localStorage and every subsequent REST call is
+   authenticated as that user — which is what lets RLS do its job.
    ═══════════════════════════════════════════════════════════════════════════ */
 const SUPABASE_URL = "https://sbukzlykhdadznwamtoq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNidWt6bHlraGRhZHpud2FtdG9xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyODAxOTcsImV4cCI6MjA5MTg1NjE5N30.AATnsdvPiAXWmJiMCIcFpBaBvY4C98icqfeK_RIlsKA";
-const SB_HDR = { "apikey": SUPABASE_ANON_KEY, "Authorization": "Bearer " + SUPABASE_ANON_KEY, "Content-Type": "application/json", "Prefer": "return=representation" };
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+});
+
+/** Build headers with the current user's JWT (falls back to anon for pre-login) */
+async function authHeaders() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token || SUPABASE_ANON_KEY;
+  return {
+    "apikey": SUPABASE_ANON_KEY,
+    "Authorization": "Bearer " + token,
+    "Content-Type": "application/json",
+    "Prefer": "return=representation"
+  };
+}
 
 async function sbGet(table, query) {
   try {
-    const r = await fetch(SUPABASE_URL + "/rest/v1/" + table + "?" + (query||"select=*"), { headers: SB_HDR });
+    const headers = await authHeaders();
+    const r = await fetch(SUPABASE_URL + "/rest/v1/" + table + "?" + (query||"select=*"), { headers });
     if (!r.ok) return null;
     return await r.json();
   } catch(e) { console.error("sbGet", table, e); return null; }
 }
 async function sbPost(table, body) {
   try {
-    const r = await fetch(SUPABASE_URL + "/rest/v1/" + table, { method:"POST", headers: SB_HDR, body: JSON.stringify(body) });
+    const headers = await authHeaders();
+    const r = await fetch(SUPABASE_URL + "/rest/v1/" + table, { method:"POST", headers, body: JSON.stringify(body) });
     if (!r.ok) { console.error("sbPost", table, r.status, await r.text()); return null; }
     const d = await r.json(); return d?.[0] || d;
   } catch(e) { console.error("sbPost", table, e); return null; }
 }
 async function sbPatch(table, id, body) {
   try {
-    const r = await fetch(SUPABASE_URL + "/rest/v1/" + table + "?id=eq." + id, { method:"PATCH", headers: SB_HDR, body: JSON.stringify(body) });
+    const headers = await authHeaders();
+    const r = await fetch(SUPABASE_URL + "/rest/v1/" + table + "?id=eq." + id, { method:"PATCH", headers, body: JSON.stringify(body) });
     if (!r.ok) { console.error("sbPatch", table, r.status, await r.text()); return null; }
     const d = await r.json(); return d?.[0] || d;
   } catch(e) { console.error("sbPatch", table, e); return null; }
 }
 async function sbDelete(table, id) {
   try {
-    const r = await fetch(SUPABASE_URL + "/rest/v1/" + table + "?id=eq." + id, { method:"DELETE", headers: SB_HDR });
+    const headers = await authHeaders();
+    const r = await fetch(SUPABASE_URL + "/rest/v1/" + table + "?id=eq." + id, { method:"DELETE", headers });
     return r.ok;
   } catch(e) { console.error("sbDelete", table, e); return false; }
 }
 
-/** Load all pricing tiers, ordered by sort_order */
-async function loadTiers() {
-  return await sbGet("pricing_tiers", "select=*&order=sort_order.asc");
+/* --- Multi-tenant helpers --------------------------------------------------
+   The logged-in user's customer_id is needed for every per-tenant query. We
+   cache it after login so we don't round-trip to the server each call. */
+let CURRENT_PROFILE = null;
+
+async function loadCurrentProfile() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) { CURRENT_PROFILE = null; return null; }
+  const rows = await sbGet("user_profiles", "select=id,role,customer_id,full_name,is_active&id=eq." + user.id);
+  CURRENT_PROFILE = (rows && rows[0]) ? { ...rows[0], email: user.email } : null;
+  return CURRENT_PROFILE;
 }
-/** Save a new tier */
-async function saveTier(name, markup, sort_order) {
-  return await sbPost("pricing_tiers", { name, markup, sort_order });
+
+function currentCustomerId() { return CURRENT_PROFILE?.customer_id || null; }
+function isSuperAdmin()      { return CURRENT_PROFILE?.role === "super_admin"; }
+function isCustomerAdmin()   { return CURRENT_PROFILE?.role === "customer_admin"; }
+
+/** Load all pricing tiers for the current customer, ordered by sort_order.
+ *  RLS also filters by customer_id, but we pass it explicitly so the server
+ *  returns a clean focused result set. Super admin can pass ?customer_id=
+ *  to look at a specific customer's tiers. */
+async function loadTiers(customerIdOverride) {
+  const cid = customerIdOverride || currentCustomerId();
+  const q = cid
+    ? "select=*&customer_id=eq." + cid + "&order=sort_order.asc"
+    : "select=*&order=sort_order.asc";   // super admin viewing all
+  return await sbGet("pricing_tiers", q);
+}
+/** Save a new tier (attaches to current customer) */
+async function saveTier(name, markup, sort_order, customerIdOverride) {
+  const customer_id = customerIdOverride || currentCustomerId();
+  return await sbPost("pricing_tiers", { name, markup, sort_order, customer_id });
 }
 /** Update a tier by id */
 async function updateTier(id, updates) {
@@ -255,23 +306,28 @@ async function updateTier(id, updates) {
 async function deleteTier(id) {
   return await sbDelete("pricing_tiers", id);
 }
-/** Load a setting by key */
+/** Load a setting by key (scoped to current customer). */
 async function loadSetting(key) {
-  const d = await sbGet("app_settings", "select=value&key=eq." + encodeURIComponent(key));
+  const cid = currentCustomerId();
+  const filter = cid
+    ? "customer_id=eq." + cid
+    : "customer_id=is.null";   // super admin reads global settings
+  const d = await sbGet("app_settings", "select=value&key=eq." + encodeURIComponent(key) + "&" + filter);
   const val = d && d.length > 0 ? d[0].value : null;
   console.log("[loadSetting]", key, "→", val === null ? "(not found)" : val);
   return val;
 }
-/** Save a setting (upsert by key).
- *  PostgREST upsert requires BOTH the on_conflict query param AND the
- *  merge-duplicates Prefer header; without on_conflict the POST tries a
- *  plain INSERT and silently fails on unique-constraint collisions. */
+/** Save a setting (upsert by customer_id + key).
+ *  v36: the unique index is (coalesce(customer_id,'00000000-...'), key), so
+ *  the upsert conflict target must reflect both columns. */
 async function saveSetting(key, value) {
   try {
-    const r = await fetch(SUPABASE_URL + "/rest/v1/app_settings?on_conflict=key", {
+    const cid = currentCustomerId();   // null for super admin = global setting
+    const headers = await authHeaders();
+    const r = await fetch(SUPABASE_URL + "/rest/v1/app_settings?on_conflict=customer_id,key", {
       method: "POST",
-      headers: { ...SB_HDR, "Prefer": "resolution=merge-duplicates,return=representation" },
-      body: JSON.stringify({ key, value, updated_at: new Date().toISOString() })
+      headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify({ key, value, customer_id: cid, updated_at: new Date().toISOString() })
     });
     if (!r.ok) {
       console.error("[saveSetting] FAIL", key, r.status, await r.text());
@@ -283,24 +339,49 @@ async function saveSetting(key, value) {
 }
 
 
-/** Authenticate user against app_users table */
+/** Authenticate user via Supabase Auth (v36 — no more client-side hashing). */
 async function authenticateUser(email, password) {
   try {
-    const d = await sbGet("app_users", "select=*&email=eq." + encodeURIComponent(email));
-    if (d && d.length > 0 && d[0].password_hash === password) {
-      return { success: true, user: { id: d[0].id, email: d[0].email, role: d[0].role, company: d[0].company } };
+    const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (error || !data?.user) {
+      console.warn("authenticateUser: signIn failed", error?.message);
+      return { success: false, reason: error?.message || "Invalid credentials" };
     }
-    return { success: false };
-  } catch(e) { console.error("authenticateUser", e); return { success: false }; }
+    const profile = await loadCurrentProfile();
+    if (!profile) {
+      await supabase.auth.signOut();
+      return { success: false, reason: "No profile found for this account" };
+    }
+    if (!profile.is_active) {
+      await supabase.auth.signOut();
+      return { success: false, reason: "This account has been deactivated" };
+    }
+    return { success: true, user: {
+      id: profile.id,
+      email: profile.email,
+      role: profile.role,
+      customer_id: profile.customer_id,
+      full_name: profile.full_name
+    }};
+  } catch(e) { console.error("authenticateUser", e); return { success: false, reason: "Network error" }; }
 }
 
-/** Load all team members from Supabase */
-async function loadTeamMembers() {
-  return await sbGet("team_members", "select=*&order=added_at.asc") || [];
+/** Sign the current user out */
+async function signOutUser() {
+  CURRENT_PROFILE = null;
+  await supabase.auth.signOut();
 }
-/** Add a team member */
+
+/** Load team members for the current customer (RLS also enforces this). */
+async function loadTeamMembers() {
+  const cid = currentCustomerId();
+  const q = cid ? "select=*&customer_id=eq." + cid + "&order=added_at.asc" : "select=*&order=added_at.asc";
+  return await sbGet("team_members", q) || [];
+}
+/** Add a team member to the current customer */
 async function addTeamMember(email, role, company) {
-  return await sbPost("team_members", { email, role, company: company || "" });
+  const customer_id = currentCustomerId();
+  return await sbPost("team_members", { email, role, company: company || "", customer_id });
 }
 /** Delete a team member by id */
 async function deleteTeamMember(id) {
@@ -1259,7 +1340,7 @@ const G = "#0C1F0E"; const GM = "#1B4332"; const GL = "#2D6A4F"; const GOLD = "#
    the Customer Pricing page. BUMP THIS INTEGER ON EVERY DEPLOY. Simple,
    monotonic, unambiguous — no letter stages, no dotted sub-versions.
    Whatever was live before gets +1 on the next ship. */
-const VERSION = 35;
+const VERSION = 36;
 const VERSION_LABEL = `v${VERSION}`;
 
 /* Sort lengths numerically shortest first: "16', 8'" → "8', 16'" */
@@ -1304,20 +1385,11 @@ function LoginPage({onLogin}) {
       if (result.success) {
         onLogin(result.user);
       } else {
-        // Fallback to hardcoded for offline/first-run
-        if (email.trim().toUpperCase() === "AS" && pass === "123") {
-          onLogin({email: email.trim(), role:"admin", company:"Garden State Lumber"});
-        } else {
-          setError("Invalid username or password");
-        }
+        setError(result.reason || "Invalid email or password");
       }
     } catch(e) {
-      // Network error — try hardcoded fallback
-      if (email.trim().toUpperCase() === "AS" && pass === "123") {
-        onLogin({email: email.trim(), role:"admin", company:"Garden State Lumber"});
-      } else {
-        setError("Invalid username or password");
-      }
+      console.error("login error", e);
+      setError("Could not reach the server. Check your connection and try again.");
     }
     setLoading(false);
   };
@@ -1333,17 +1405,17 @@ function LoginPage({onLogin}) {
           <div style={{fontSize:13,color:"rgba(255,255,255,0.5)",marginBottom:20,textAlign:"center",lineHeight:1.6}}>Sign in with the credentials provided by your account administrator.</div>
           {error && <div style={{marginBottom:12,padding:"8px 12px",borderRadius:6,background:"rgba(255,80,80,0.15)",border:"1px solid rgba(255,80,80,0.3)",color:"#ff6b6b",fontSize:12,fontWeight:600,textAlign:"center"}}>{error}</div>}
           <div style={{marginBottom:16}}>
-            <label style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:1.5,display:"block",marginBottom:6}}>USERNAME</label>
-            <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleLogin()}} placeholder="Username"
+            <label style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:1.5,display:"block",marginBottom:6}}>EMAIL</label>
+            <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleLogin()}} placeholder="you@company.com" type="email" autoComplete="email"
               style={{width:"100%",padding:"12px 16px",borderRadius:8,border:"1px solid rgba(197,165,90,0.2)",background:"rgba(0,0,0,0.4)",color:"#fff",fontSize:14,fontFamily:"'IBM Plex Mono',monospace",outline:"none"}}/>
           </div>
           <div style={{marginBottom:24}}>
             <label style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:1.5,display:"block",marginBottom:6}}>PASSWORD</label>
-            <input type="password" value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleLogin()}} placeholder="••••••••"
+            <input type="password" value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleLogin()}} placeholder="••••••••" autoComplete="current-password"
               style={{width:"100%",padding:"12px 16px",borderRadius:8,border:"1px solid rgba(197,165,90,0.2)",background:"rgba(0,0,0,0.4)",color:"#fff",fontSize:14,fontFamily:"'IBM Plex Mono',monospace",outline:"none"}}/>
           </div>
-          <button onClick={handleLogin}
-            style={{width:"100%",padding:"14px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${GOLD},#A8883A)`,color:G,fontSize:14,fontWeight:800,cursor:"pointer",letterSpacing:1.5,textTransform:"uppercase"}}>Sign In</button>
+          <button onClick={handleLogin} disabled={loading}
+            style={{width:"100%",padding:"14px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${GOLD},#A8883A)`,color:G,fontSize:14,fontWeight:800,cursor:loading?"wait":"pointer",letterSpacing:1.5,textTransform:"uppercase",opacity:loading?0.7:1}}>{loading?"Signing In…":"Sign In"}</button>
           <div style={{marginTop:16,fontSize:11,color:"rgba(255,255,255,0.3)",textAlign:"center"}}>Don't have an account? Contact your company administrator.</div>
         </div>
       </div>
@@ -5231,6 +5303,38 @@ function StatPill({label, value, variant}) {
 
 function App() {
   const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  /* v36: restore session on page load. If the user has an active Supabase
+     JWT stored in localStorage (from a prior login), log them straight in
+     without showing the login screen. */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user && !cancelled) {
+          const profile = await loadCurrentProfile();
+          if (profile?.is_active) {
+            setUser({
+              id: profile.id, email: profile.email, role: profile.role,
+              customer_id: profile.customer_id, full_name: profile.full_name
+            });
+          } else {
+            await supabase.auth.signOut();
+          }
+        }
+      } finally {
+        if (!cancelled) setAuthLoading(false);
+      }
+    })();
+    // Also subscribe to auth changes so external sign-outs (e.g. token
+    // revoked server-side) drop the user client-side.
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") { CURRENT_PROFILE = null; setUser(null); }
+    });
+    return () => { cancelled = true; sub?.subscription?.unsubscribe?.(); };
+  }, []);
   /* Stage 1B.3: main-page nav button styling helper. Black gradient + gold
      border + bold gold text. When active (current page) the gold fills and
      the text inverts to black, so the current tab is unmistakable. */
@@ -5402,7 +5506,9 @@ function App() {
   }, []);
 
 
-  const isAdmin = user?.role === "admin";
+  const isSuperAdminUser = user?.role === "super_admin";
+  const isCustomerAdminUser = user?.role === "customer_admin";
+  const isAdmin = isSuperAdminUser || isCustomerAdminUser;
   const selling = sellingTier !== null;
   const activeMult = selling ? (tiers.find(t=>t.id===sellingTier)?.markup||1) : manualMarkup;
   const tierName = selling ? (tiers.find(t=>t.id===sellingTier)?.name||'') : '';
@@ -5562,6 +5668,11 @@ function App() {
     return () => { window.removeEventListener('scroll', check); if (scrollEl) scrollEl.removeEventListener('scroll', check); };
   },[activeMult, sec, page]);
 
+  if (authLoading) return (
+    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,#000 0%,${G} 40%,${GM} 70%,#000 100%)`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Archivo',sans-serif",color:GOLD,fontSize:12,letterSpacing:2,fontWeight:700}}>
+      LOADING…
+    </div>
+  );
   if (!user) return <LoginPage onLogin={setUser}/>;
 
   return (
@@ -5597,16 +5708,17 @@ function App() {
               <div style={{marginLeft:2}}><div style={{fontSize:17,fontWeight:900,color:"#fff",letterSpacing:1.5,lineHeight:1}}>GARDEN STATE LUMBER</div><div style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:2.5,marginTop:4}}>PRICE PORTAL</div></div>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
-              {/* Stage 1B.3: nav buttons restyled — black gradient + gold border + bold gold text.
-                  Active page inverts to a filled gold background with black text. */}
-              <button onClick={()=>setPage(page==="admin"?"portal":"admin")} style={navBtnStyle(page==="admin")}>{page==="admin"?"← Back to Pricing":"Pricing Settings"}</button>
-              <button onClick={()=>setPage(page==="productadmin"?"portal":"productadmin")} style={navBtnStyle(page==="productadmin")}>{page==="productadmin"?"← Back to Pricing":"Admin"}</button>
-              {/* v32: Customer Pricing tab — customer-scoped cost overrides for Mouldings. */}
-              <button onClick={()=>setPage(page==="customerpricing"?"portal":"customerpricing")} style={navBtnStyle(page==="customerpricing")}>{page==="customerpricing"?"← Back to Pricing":"Customer Pricing"}</button>
+              {/* v36: nav buttons gated by role.
+                  - team_member (read-only): no admin buttons shown
+                  - customer_admin: Pricing Settings + Customer Pricing (their tiers, their team, their overrides)
+                  - super_admin: all three (master catalog management is super-admin-only) */}
+              {isAdmin && <button onClick={()=>setPage(page==="admin"?"portal":"admin")} style={navBtnStyle(page==="admin")}>{page==="admin"?"← Back to Pricing":"Pricing Settings"}</button>}
+              {isSuperAdminUser && <button onClick={()=>setPage(page==="productadmin"?"portal":"productadmin")} style={navBtnStyle(page==="productadmin")}>{page==="productadmin"?"← Back to Pricing":"Admin"}</button>}
+              {isAdmin && <button onClick={()=>setPage(page==="customerpricing"?"portal":"customerpricing")} style={navBtnStyle(page==="customerpricing")}>{page==="customerpricing"?"← Back to Pricing":"Customer Pricing"}</button>}
               {tiersLoaded && <span style={{fontSize:9,color:"#4ade80",fontWeight:600,display:"inline-flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:"#4ade80",display:"inline-block"}}></span>DB</span>}
               {/* Stage 1B.3: persistent version chip so the running version is always visible on the main page. */}
               <span style={{fontSize:9,padding:"4px 9px",borderRadius:10,background:"linear-gradient(180deg,#1a1a1a 0%,#000 100%)",border:`1px solid ${GOLD}`,color:GOLD,letterSpacing:0.8,fontWeight:900,fontFamily:"'IBM Plex Mono',monospace",marginLeft:4}}>{VERSION_LABEL}</span>
-              <button onClick={()=>setUser(null)} style={{...navBtnStyle(false),padding:"7px 14px",fontSize:10,marginLeft:4}}>Sign Out</button>
+              <button onClick={async ()=>{ await signOutUser(); setUser(null); }} style={{...navBtnStyle(false),padding:"7px 14px",fontSize:10,marginLeft:4}}>Sign Out</button>
             </div>
           </div>
         </div>
@@ -5631,11 +5743,11 @@ function App() {
       </div>
 
       <div style={{maxWidth:1500,margin:"0 auto",padding:page==="portal"?"108px 24px 20px":"88px 24px 20px"}}>
-        {page === "admin" && <AdminPanel user={user} tiers={tiers} setTiers={setTiers} team={team} setTeam={setTeam}/>}
-        {page === "productadmin" && <ProductAdmin levelVis={levelVis} setLevelVis={setLevelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn} setShowAllPriceLevelsBtn={setShowAllPriceLevelsBtn} hiddenSkuSet={hiddenSkuSet} onVisibilityChange={(hidden) => setHiddenSkuSet(new Set(hidden))} productOverrides={productOverrides} setProductOverrides={updateProductOverrides} effectiveCat={effectiveCat} publishedMeta={publishedMeta} onPublish={publishCatalog} onRevertPublished={revertPublishedCatalog}/>}
+        {page === "admin" && isAdmin && <AdminPanel user={user} tiers={tiers} setTiers={setTiers} team={team} setTeam={setTeam}/>}
+        {page === "productadmin" && isSuperAdminUser && <ProductAdmin levelVis={levelVis} setLevelVis={setLevelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn} setShowAllPriceLevelsBtn={setShowAllPriceLevelsBtn} hiddenSkuSet={hiddenSkuSet} onVisibilityChange={(hidden) => setHiddenSkuSet(new Set(hidden))} productOverrides={productOverrides} setProductOverrides={updateProductOverrides} effectiveCat={effectiveCat} publishedMeta={publishedMeta} onPublish={publishCatalog} onRevertPublished={revertPublishedCatalog}/>}
         {/* v32: Customer Pricing admin page. Stage 1B reads the published Mouldings
            catalog for SKU/substrate autocomplete and UOM/Level 1 lookup. */}
-        {page === "customerpricing" && <CustomerPricingAdmin effectiveCat={effectiveCat}/>}
+        {page === "customerpricing" && isAdmin && <CustomerPricingAdmin effectiveCat={effectiveCat}/>}
 
         {page === "portal" && (<>
           {/* PRICING BAR — above lookup */}
