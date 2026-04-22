@@ -15,6 +15,19 @@
   ::-webkit-scrollbar-thumb { background: rgba(197,165,90,0.2); border-radius: 3px; }
   ::-webkit-scrollbar-thumb:hover { background: rgba(197,165,90,0.4); }
 
+  /* Hide native number-input spinner arrows across all browsers so desktop
+     and iPad behave identically. On desktop those arrows were firing the
+     multiplier-warning banner on click; on iPad the arrows weren't even
+     visible. Users can still type values directly — that's the intended
+     input method. */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    appearance: none;
+    margin: 0;
+  }
+  input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
   /* ═══════════════ DIFF PREVIEW STYLING ═══════════════ */
   /* Row-level classes applied in the staged-CSV preview table to mark
      added / changed / removed SKUs. Colors match the summary banner dots. */
@@ -2821,6 +2834,15 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
 
   return (
     <div style={{animation:"fadeIn 0.3s ease"}}>
+      {/* ─── CUSTOMER MASTER LIST (Stage 1B.2 — relocated from Customer
+          Pricing page to the Admin page so master-data management lives
+          in one place). Contains its own state + import logic; reads and
+          writes localStorage. ─── */}
+      <div style={{fontSize:10,fontWeight:700,color:"rgba(197,165,90,0.5)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:8,marginTop:4}}>Master Data</div>
+      <CustomerListAdmin/>
+
+      <div style={{fontSize:10,fontWeight:700,color:"rgba(197,165,90,0.5)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:8,marginTop:24}}>Product Catalog</div>
+
       {/* Live catalog status badge — always visible, shows what the main
           pricing view is currently reading. */}
       <div style={{
@@ -3986,44 +4008,237 @@ function SectionVisualSelector({ sec, setSec, setS4sFilter, effectiveCat }) {
      Stage 1B.1 adds: unified ship-to search (replaces cascading
      dropdowns), darker card surfaces for visual separation.
 
+     Stage 1B.2 adds: customer-list UI moved out of the Customer Pricing
+     page into the Admin page via the extracted CustomerListAdmin
+     component below. CustomerPricingAdmin now only *reads* the list via
+     loadCustomerList() — import + mapping live in one place.
+
    Applicable only to the Mouldings section per spec. Pricing overrides
    written here replace Level 1 on the customer-facing portal (green-text
    display with tooltip legend, only surfaced when at least one override
    exists in the system).
    =========================================================================*/
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CustomerListAdmin
+   ─────────────────────────────────────────────────────────────────────
+   Stage 1B.2 extraction: the customer master list UI lives here and
+   renders at the top of the Admin page. Import, column mapping, and
+   stats all stay together. CustomerPricingAdmin reads the saved list
+   via loadCustomerList() — no prop-drilling needed because the list is
+   persisted to localStorage and the two components never render
+   simultaneously (they're gated by page routing in App).
+   ═══════════════════════════════════════════════════════════════════════ */
+function CustomerListAdmin() {
+  const [customerList, setCustomerList] = useState(() => loadCustomerList());
+  const [importStats, setImportStats]   = useState(null);
+  const [importError, setImportError]   = useState(null);
+  const fileRef = useRef(null);
+
+  const DEFAULT_COLMAP = {
+    branch:'Branch', custId:'Cust ID', shipToNumber:'Ship To Number',
+    shipToName:'Ship To Name', customerName:'Customer Name',
+    address1:'Address 1', address2:'Address 2',
+    city:'City', state:'State', zip:'Zip'
+  };
+  const [colMap, setColMap]       = useState(DEFAULT_COLMAP);
+  const [pendingHeaders, setPendingHeaders] = useState(null);
+  const [pendingRows, setPendingRows]       = useState(null);
+  const [pendingFilename, setPendingFilename] = useState(null);
+
+  /* Stats derived from the current list, for the pill row. */
+  const stats = useMemo(() => {
+    const rows = (customerList && customerList.rows) || [];
+    const byBranch = new Map();
+    rows.forEach(r => {
+      if (!byBranch.has(r.branch)) byBranch.set(r.branch, new Map());
+      const custs = byBranch.get(r.branch);
+      if (!custs.has(r.custId)) custs.set(r.custId, true);
+    });
+    const totalCustomers = Array.from(byBranch.values()).reduce((n,m)=> n+m.size, 0);
+    return { totalRows: rows.length, totalCustomers, totalBranches: byBranch.size };
+  }, [customerList]);
+
+  const handleFile = (file) => {
+    if (!file) return;
+    setImportError(null);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb = window.XLSX.read(data, { type:'array', cellDates:false });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = window.XLSX.utils.sheet_to_json(sheet, { defval:'', raw:false });
+        if (!rows.length) { setImportError('File is empty or has no data rows.'); return; }
+        const headers = Object.keys(rows[0]);
+        setPendingHeaders(headers);
+        setPendingRows(rows);
+        setPendingFilename(file.name);
+        /* Auto-map by exact header match, then loose substring match. */
+        const autoMap = {...DEFAULT_COLMAP};
+        Object.keys(autoMap).forEach(field => {
+          const want = autoMap[field].toLowerCase().replace(/\s+/g,'');
+          const match = headers.find(h => h.toLowerCase().replace(/\s+/g,'') === want);
+          if (match) autoMap[field] = match;
+          else {
+            const loose = headers.find(h => h.toLowerCase().includes(field.toLowerCase().slice(0,4)));
+            autoMap[field] = loose || '';
+          }
+        });
+        setColMap(autoMap);
+      } catch (err) {
+        console.error(err);
+        setImportError('Could not parse file: '+err.message);
+      }
+    };
+    reader.onerror = () => setImportError('Could not read file.');
+    reader.readAsArrayBuffer(file);
+  };
+
+  const commitImport = () => {
+    if (!pendingRows) return;
+    const required = ['branch','custId','shipToNumber'];
+    const missingMap = required.filter(f => !colMap[f]);
+    if (missingMap.length) {
+      setImportError('Map these required columns first: '+missingMap.join(', '));
+      return;
+    }
+    const normalized = [];
+    let skipped = 0;
+    pendingRows.forEach(r => {
+      const out = {};
+      Object.keys(colMap).forEach(f => { out[f] = colMap[f] ? String(r[colMap[f]]||'').trim() : ''; });
+      if (required.some(f => !out[f])) { skipped++; return; }
+      normalized.push(out);
+    });
+    if (!normalized.length) { setImportError('No valid rows after mapping. Check required column assignments.'); return; }
+    const incoming = { rows: normalized, sourceFilename: pendingFilename };
+    const { list, stats: mergeStats } = mergeCustomerList(customerList, incoming);
+    saveCustomerList(list);
+    setCustomerList(list);
+    setImportStats({...mergeStats, skipped});
+    setPendingRows(null); setPendingHeaders(null); setPendingFilename(null);
+    setImportError(null);
+  };
+
+  const cancelStaged = () => { setPendingRows(null); setPendingHeaders(null); setPendingFilename(null); setImportError(null); };
+
+  const clearAll = () => {
+    if (!confirm('Remove the entire customer master list? This cannot be undone.')) return;
+    clearCustomerList();
+    setCustomerList(null);
+    setImportStats(null);
+  };
+
+  /* Local style cribs — kept in-scope so this component is drop-in
+     portable without reaching into the parent's style definitions. */
+  const cardStyle = {background:"rgba(0,0,0,0.38)",border:"1px solid rgba(197,165,90,0.35)",borderRadius:8,padding:20,marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.25)"};
+  const cardHeaderStyle = {fontSize:12,fontWeight:900,color:GOLD,letterSpacing:1.5,marginBottom:4,textTransform:'uppercase'};
+  const cardSublineStyle = {fontSize:10,color:"rgba(255,255,255,0.45)",marginBottom:16,lineHeight:1.5};
+  const inputStyle = {background:"rgba(0,0,0,0.3)",border:"1px solid rgba(197,165,90,0.2)",borderRadius:4,color:"#fff",padding:"8px 10px",fontSize:12,fontFamily:"inherit"};
+  const labelStyle = {fontSize:9,fontWeight:700,letterSpacing:1,color:"rgba(197,165,90,0.75)",textTransform:"uppercase",marginBottom:4,display:"block"};
+
+  return (
+    <div style={cardStyle}>
+      <div style={cardHeaderStyle}>Customer Master List</div>
+      <div style={cardSublineStyle}>
+        Upload your ERP's customer universe export. Re-importing merges additions and refreshes changed rows; existing ship-tos that disappeared from the new export are preserved.
+      </div>
+
+      {/* Stats */}
+      <div style={{display:"flex",gap:16,marginBottom:16,flexWrap:"wrap"}}>
+        <StatPill label="Ship-to rows" value={stats.totalRows}/>
+        <StatPill label="Customers"   value={stats.totalCustomers}/>
+        <StatPill label="Branches"    value={stats.totalBranches}/>
+        {customerList && customerList.importedAt && (
+          <StatPill label="Last import" value={new Date(customerList.importedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}/>
+        )}
+      </div>
+
+      {/* Upload + clear */}
+      {!pendingRows && (
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          <button onClick={()=>fileRef.current && fileRef.current.click()}
+            style={{padding:"9px 18px",borderRadius:6,border:`1px solid ${GOLD}`,background:"rgba(197,165,90,0.1)",color:GOLD,fontSize:11,fontWeight:700,letterSpacing:0.8,cursor:"pointer"}}>
+            + Import Customer File
+          </button>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}}
+            onChange={e=>{ handleFile(e.target.files[0]); e.target.value=''; }}/>
+          {stats.totalRows > 0 && (
+            <button onClick={clearAll}
+              style={{padding:"9px 18px",borderRadius:6,border:"1px solid rgba(232,90,90,0.35)",background:"transparent",color:"#e85a5a",fontSize:10,fontWeight:700,letterSpacing:0.8,cursor:"pointer"}}>
+              Clear all
+            </button>
+          )}
+        </div>
+      )}
+
+      {importError && (
+        <div style={{marginTop:12,padding:"8px 12px",background:"rgba(232,90,90,0.08)",border:"1px solid rgba(232,90,90,0.3)",borderRadius:4,color:"#e85a5a",fontSize:11}}>
+          {importError}
+        </div>
+      )}
+
+      {importStats && !pendingRows && (
+        <div style={{marginTop:12,padding:"10px 14px",background:"rgba(90,184,114,0.08)",border:"1px solid rgba(90,184,114,0.25)",borderRadius:4,fontSize:11,color:"#5ab872"}}>
+          <strong>Import complete.</strong> {importStats.added} added · {importStats.updated} refreshed · {importStats.unchanged} unchanged
+          {importStats.skipped > 0 && <span> · {importStats.skipped} skipped (missing required fields)</span>}
+          {" "}· {importStats.total} total in master.
+        </div>
+      )}
+
+      {/* Column mapping UI (staged file) */}
+      {pendingRows && pendingHeaders && (
+        <div style={{marginTop:16,padding:16,background:"rgba(0,0,0,0.25)",border:"1px dashed rgba(197,165,90,0.3)",borderRadius:6}}>
+          <div style={{fontSize:11,fontWeight:700,color:GOLD,marginBottom:4,letterSpacing:0.5}}>Staged: {pendingFilename} ({pendingRows.length} rows)</div>
+          <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginBottom:14,lineHeight:1.5}}>
+            Confirm the column mapping below. Auto-detected from your file's header row. Required: Branch, Cust ID, Ship To Number.
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))",gap:12,marginBottom:16}}>
+            {Object.keys(DEFAULT_COLMAP).map(field => {
+              const isRequired = ['branch','custId','shipToNumber'].includes(field);
+              return (
+                <div key={field}>
+                  <label style={labelStyle}>
+                    {DEFAULT_COLMAP[field]}
+                    {isRequired && <span style={{color:"#e85a5a",marginLeft:4}}>*</span>}
+                  </label>
+                  <select value={colMap[field]||''} onChange={e=>setColMap({...colMap,[field]:e.target.value})}
+                    style={{...inputStyle,width:"100%"}}>
+                    <option value="">— not mapped —</option>
+                    {pendingHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={commitImport}
+              style={{padding:"9px 18px",borderRadius:6,border:`1px solid ${GOLD}`,background:GOLD,color:"#000",fontSize:11,fontWeight:900,letterSpacing:0.8,cursor:"pointer"}}>
+              Commit Import
+            </button>
+            <button onClick={cancelStaged}
+              style={{padding:"9px 18px",borderRadius:6,border:"1px solid rgba(255,255,255,0.2)",background:"transparent",color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:700,letterSpacing:0.8,cursor:"pointer"}}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CustomerPricingAdmin({effectiveCat}) {
   /* Hooks (useState/useEffect/useMemo/useRef) are globally destructured at
      the top of the script — we just use them directly, matching the
      convention in AdminPanel and ProductAdmin. */
   const liveCat = effectiveCat || {};
 
-  /* ───────── State: customer master list ───────── */
+  /* ───────── State: customer master list (read-only here) ─────────
+     Stage 1B.2: the import UI lives in CustomerListAdmin (Admin page).
+     This component only *reads* the saved list via loadCustomerList()
+     and reacts to changes on mount. No import state needed locally. */
   const [customerList, setCustomerList] = useState(() => loadCustomerList());
-  const [importStats, setImportStats]   = useState(null);   // from most recent import
-  const [importError, setImportError]   = useState(null);
-  const fileRef = useRef(null);
-
-  /* Column mapping state. The user can adjust which source columns map to
-     which canonical fields. Defaults match the file format we validated
-     against (GSL ERP export with Branch/Cust ID/Ship To Number in that
-     order). Any future export with a different layout just needs the
-     mapping adjusted once; the parse logic below reads the mapping. */
-  const DEFAULT_COLMAP = {
-    branch:        'Branch',
-    custId:        'Cust ID',
-    shipToNumber:  'Ship To Number',
-    shipToName:    'Ship To Name',
-    customerName:  'Customer Name',
-    address1:      'Address 1',
-    address2:      'Address 2',
-    city:          'City',
-    state:         'State',
-    zip:           'Zip'
-  };
-  const [colMap, setColMap]       = useState(DEFAULT_COLMAP);
-  const [pendingHeaders, setPendingHeaders] = useState(null);  // headers seen in staged file
-  const [pendingRows, setPendingRows]       = useState(null);  // raw rows (array of objects)
-  const [pendingFilename, setPendingFilename] = useState(null);
 
   /* ───────── State: customer selector ───────── */
   const [selectedBranch, setSelectedBranch]       = useState(null);
@@ -4111,20 +4326,38 @@ function CustomerPricingAdmin({effectiveCat}) {
     if (!q) return [];
     const tokens = q.split(/\s+/).filter(Boolean);
     /* Each row must match EVERY whitespace-separated token somewhere in
-       its searchable fields. This AND-semantics lets users narrow with
-       extra words: "universal chicago" surfaces only Chicago locations. */
+       its searchable fields (AND semantics). Results are then scored so
+       the most meaningful matches bubble to the top:
+         - full query as a contiguous substring in customer name: 1000
+         - full query contiguous in ship-to name:                   800
+         - all tokens present in customer name:                     500
+         - all tokens present in ship-to name:                      300
+         - plus a small bonus for city matches
+       Scattered matches (query fragments spread across address, state,
+       etc.) fall to the bottom with score 0. */
     const matches = [];
     for (const r of rows) {
+      const custLower = (r.customerName||'').toLowerCase();
+      const shipLower = (r.shipToName||'').toLowerCase();
+      const cityLower = (r.city||'').toLowerCase();
       const hay = [
         r.customerName, r.shipToName, r.custId, r.shipToNumber,
         r.address1, r.address2, r.city, r.state, r.zip, r.branch,
       ].filter(Boolean).join(' ').toLowerCase();
-      if (tokens.every(t => hay.includes(t))) {
-        matches.push(r);
-        if (matches.length >= 25) break;
-      }
+      if (!tokens.every(t => hay.includes(t))) continue;
+      let score = 0;
+      if (custLower.includes(q)) score = 1000;
+      else if (shipLower.includes(q)) score = 800;
+      else if (tokens.every(t => custLower.includes(t))) score = 500;
+      else if (tokens.every(t => shipLower.includes(t))) score = 300;
+      if (tokens.some(t => cityLower.includes(t))) score += 50;
+      matches.push({row:r, score});
     }
-    return matches;
+    /* Sort by score desc, then alpha by customer name for stable ties.
+       Cap at 25 results — more than that isn't scannable anyway. */
+    matches.sort((a,b) => b.score - a.score
+      || (a.row.customerName||'').localeCompare(b.row.customerName||''));
+    return matches.slice(0, 25).map(m => m.row);
   }, [customerList, custSearch]);
 
   /* One-click ship-to selection: populates branch/custId/shipToNumber in
@@ -4136,90 +4369,6 @@ function CustomerPricingAdmin({effectiveCat}) {
     setSelectedCustId(row.custId);
     setSelectedShipToNumber(row.shipToNumber);
     setCustSearch('');   // collapse the results list once something is picked
-  };
-
-  /* ───────── File upload handler (xlsx + csv) ───────── */
-  const handleFile = (file) => {
-    if (!file) return;
-    setImportError(null);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target.result);
-        /* SheetJS handles both .xlsx and .csv. For .csv, header row is
-           still used; blank cells become ''. cellDates off — we treat
-           everything as strings/numbers, never dates. */
-        const wb = window.XLSX.read(data, { type:'array', cellDates:false });
-        const sheetName = wb.SheetNames[0];
-        const sheet = wb.Sheets[sheetName];
-        const rows = window.XLSX.utils.sheet_to_json(sheet, { defval:'', raw:false });
-        if (!rows.length) { setImportError('File is empty or has no data rows.'); return; }
-        const headers = Object.keys(rows[0]);
-        setPendingHeaders(headers);
-        setPendingRows(rows);
-        setPendingFilename(file.name);
-        /* Auto-map columns by matching header text (case-insensitive,
-           substring-tolerant). Anything we can't auto-map stays unmapped
-           and the user resolves it in the mapping UI. */
-        const autoMap = {...DEFAULT_COLMAP};
-        Object.keys(autoMap).forEach(field => {
-          const want = autoMap[field].toLowerCase().replace(/\s+/g,'');
-          const match = headers.find(h => h.toLowerCase().replace(/\s+/g,'') === want);
-          if (match) autoMap[field] = match;
-          else {
-            // Loose match fallback (e.g. "Ship To" in file header vs "Ship To Number")
-            const loose = headers.find(h => h.toLowerCase().includes(field.toLowerCase().slice(0,4)));
-            autoMap[field] = loose || '';
-          }
-        });
-        setColMap(autoMap);
-      } catch (err) {
-        console.error(err);
-        setImportError('Could not parse file: '+err.message);
-      }
-    };
-    reader.onerror = () => setImportError('Could not read file.');
-    reader.readAsArrayBuffer(file);
-  };
-
-  /* Commit the staged rows into the customer list with the current column
-     mapping applied. Required fields: branch, custId, shipToNumber. Rows
-     missing any of these are silently skipped (with a count in the result
-     banner), because the data is frequently dirty at the tail of ERP exports. */
-  const commitImport = () => {
-    if (!pendingRows) return;
-    const required = ['branch','custId','shipToNumber'];
-    const missingMap = required.filter(f => !colMap[f]);
-    if (missingMap.length) {
-      setImportError('Map these required columns first: '+missingMap.join(', '));
-      return;
-    }
-    const normalized = [];
-    let skipped = 0;
-    pendingRows.forEach(r => {
-      const out = {};
-      Object.keys(colMap).forEach(f => { out[f] = colMap[f] ? String(r[colMap[f]]||'').trim() : ''; });
-      if (required.some(f => !out[f])) { skipped++; return; }
-      normalized.push(out);
-    });
-    if (!normalized.length) { setImportError('No valid rows after mapping. Check required column assignments.'); return; }
-    const incoming = { rows: normalized, sourceFilename: pendingFilename };
-    const { list, stats } = mergeCustomerList(customerList, incoming);
-    saveCustomerList(list);
-    setCustomerList(list);
-    setImportStats({...stats, skipped});
-    setPendingRows(null); setPendingHeaders(null); setPendingFilename(null);
-    setImportError(null);
-  };
-
-  const cancelStaged = () => { setPendingRows(null); setPendingHeaders(null); setPendingFilename(null); setImportError(null); };
-
-  const clearAll = () => {
-    if (!confirm('Remove the entire customer master list? This cannot be undone.')) return;
-    clearCustomerList();
-    setCustomerList(null);
-    setSelectedBranch(null); setSelectedCustId(null); setSelectedShipToNumber(null);
-    setImportStats(null);
   };
 
   /* ═════════════════════════════════════════════════════════════════════
@@ -4438,95 +4587,6 @@ function CustomerPricingAdmin({effectiveCat}) {
         <span style={{fontSize:9,padding:"3px 8px",borderRadius:10,background:"rgba(197,165,90,0.08)",border:"1px solid rgba(197,165,90,0.2)",color:GOLD,letterSpacing:0.8,fontWeight:700}}>v32 · STAGE 1B.1</span>
       </div>
 
-      {/* ─── CARD 1: CUSTOMER MASTER LIST ─── */}
-      <div style={cardStyle}>
-        <div style={cardHeaderStyle}>Customer Master List</div>
-        <div style={cardSublineStyle}>
-          Upload an export from your ERP with the customer universe. Re-importing merges additions and refreshes changed rows; existing ship-tos that disappeared from the new export are preserved.
-        </div>
-
-        {/* Stats bar */}
-        <div style={{display:"flex",gap:16,marginBottom:16,flexWrap:"wrap"}}>
-          <StatPill label="Ship-to rows" value={totalRows}/>
-          <StatPill label="Customers"  value={totalCustomers}/>
-          <StatPill label="Branches"   value={availableBranches.length}/>
-          {customerList && customerList.importedAt && (
-            <StatPill label="Last import" value={new Date(customerList.importedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}/>
-          )}
-        </div>
-
-        {/* Upload action + clear */}
-        {!pendingRows && (
-          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-            <button onClick={()=>fileRef.current && fileRef.current.click()}
-              style={{padding:"9px 18px",borderRadius:6,border:`1px solid ${GOLD}`,background:"rgba(197,165,90,0.1)",color:GOLD,fontSize:11,fontWeight:700,letterSpacing:0.8,cursor:"pointer"}}>
-              + Import Customer File
-            </button>
-            <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}}
-              onChange={e=>{ handleFile(e.target.files[0]); e.target.value=''; }}/>
-            {totalRows > 0 && (
-              <button onClick={clearAll}
-                style={{padding:"9px 18px",borderRadius:6,border:"1px solid rgba(232,90,90,0.35)",background:"transparent",color:"#e85a5a",fontSize:10,fontWeight:700,letterSpacing:0.8,cursor:"pointer"}}>
-                Clear all
-              </button>
-            )}
-          </div>
-        )}
-
-        {importError && (
-          <div style={{marginTop:12,padding:"8px 12px",background:"rgba(232,90,90,0.08)",border:"1px solid rgba(232,90,90,0.3)",borderRadius:4,color:"#e85a5a",fontSize:11}}>
-            {importError}
-          </div>
-        )}
-
-        {importStats && !pendingRows && (
-          <div style={{marginTop:12,padding:"10px 14px",background:"rgba(90,184,114,0.08)",border:"1px solid rgba(90,184,114,0.25)",borderRadius:4,fontSize:11,color:"#5ab872"}}>
-            <strong>Import complete.</strong> {importStats.added} added · {importStats.updated} refreshed · {importStats.unchanged} unchanged
-            {importStats.skipped > 0 && <span> · {importStats.skipped} skipped (missing required fields)</span>}
-            {" "}· {importStats.total} total in master.
-          </div>
-        )}
-
-        {/* Staged file: column mapping UI */}
-        {pendingRows && pendingHeaders && (
-          <div style={{marginTop:16,padding:16,background:"rgba(0,0,0,0.25)",border:"1px dashed rgba(197,165,90,0.3)",borderRadius:6}}>
-            <div style={{fontSize:11,fontWeight:700,color:GOLD,marginBottom:4,letterSpacing:0.5}}>Staged: {pendingFilename} ({pendingRows.length} rows)</div>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginBottom:14,lineHeight:1.5}}>
-              Confirm the column mapping below. Auto-detected from your file's header row. Required: Branch, Cust ID, Ship To Number.
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))",gap:12,marginBottom:16}}>
-              {Object.keys(DEFAULT_COLMAP).map(field => {
-                const isRequired = ['branch','custId','shipToNumber'].includes(field);
-                return (
-                  <div key={field}>
-                    <label style={labelStyle}>
-                      {DEFAULT_COLMAP[field]}
-                      {isRequired && <span style={{color:"#e85a5a",marginLeft:4}}>*</span>}
-                    </label>
-                    <select value={colMap[field]||''} onChange={e=>setColMap({...colMap,[field]:e.target.value})}
-                      style={{...inputStyle,width:"100%"}}>
-                      <option value="">— not mapped —</option>
-                      {pendingHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                    </select>
-                  </div>
-                );
-              })}
-            </div>
-            <div style={{display:"flex",gap:10}}>
-              <button onClick={commitImport}
-                style={{padding:"9px 18px",borderRadius:6,border:`1px solid ${GOLD}`,background:GOLD,color:"#000",fontSize:11,fontWeight:900,letterSpacing:0.8,cursor:"pointer"}}>
-                Commit Import
-              </button>
-              <button onClick={cancelStaged}
-                style={{padding:"9px 18px",borderRadius:6,border:"1px solid rgba(255,255,255,0.2)",background:"transparent",color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:700,letterSpacing:0.8,cursor:"pointer"}}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ─── CARD 2: CUSTOMER SELECTOR ─── */}
       {/* ─── CARD 2: CUSTOMER SELECTOR (unified search) ─── */}
       <div style={cardStyle}>
         <div style={cardHeaderStyle}>Select Customer</div>
@@ -5194,7 +5254,7 @@ function App() {
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <button onClick={()=>setPage(page==="admin"?"portal":"admin")} style={{padding:"7px 16px",borderRadius:6,border:page==="admin"?"1px solid rgba(197,165,90,0.3)":"1px solid rgba(255,255,255,0.06)",background:page==="admin"?"rgba(197,165,90,0.12)":"transparent",color:page==="admin"?GOLD:"rgba(255,255,255,0.35)",fontSize:11,fontWeight:700,cursor:"pointer"}}>{page==="admin"?"← Back to Pricing":"Pricing Settings"}</button>
-              <button onClick={()=>setPage(page==="productadmin"?"portal":"productadmin")} style={{padding:"7px 16px",borderRadius:6,border:page==="productadmin"?"1px solid rgba(197,165,90,0.3)":"1px solid rgba(255,255,255,0.06)",background:page==="productadmin"?"rgba(197,165,90,0.12)":"transparent",color:page==="productadmin"?GOLD:"rgba(255,255,255,0.35)",fontSize:11,fontWeight:700,cursor:"pointer"}}>{page==="productadmin"?"← Back to Pricing":"Product Admin"}</button>
+              <button onClick={()=>setPage(page==="productadmin"?"portal":"productadmin")} style={{padding:"7px 16px",borderRadius:6,border:page==="productadmin"?"1px solid rgba(197,165,90,0.3)":"1px solid rgba(255,255,255,0.06)",background:page==="productadmin"?"rgba(197,165,90,0.12)":"transparent",color:page==="productadmin"?GOLD:"rgba(255,255,255,0.35)",fontSize:11,fontWeight:700,cursor:"pointer"}}>{page==="productadmin"?"← Back to Pricing":"Admin"}</button>
               {/* v32: Customer Pricing tab — customer-scoped cost overrides for Mouldings. */}
               <button onClick={()=>setPage(page==="customerpricing"?"portal":"customerpricing")} style={{padding:"7px 16px",borderRadius:6,border:page==="customerpricing"?"1px solid rgba(197,165,90,0.3)":"1px solid rgba(255,255,255,0.06)",background:page==="customerpricing"?"rgba(197,165,90,0.12)":"transparent",color:page==="customerpricing"?GOLD:"rgba(255,255,255,0.35)",fontSize:11,fontWeight:700,cursor:"pointer"}}>{page==="customerpricing"?"← Back to Pricing":"Customer Pricing"}</button>
               {tiersLoaded && <span style={{fontSize:9,color:"#4ade80",fontWeight:600,display:"inline-flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:"#4ade80",display:"inline-block"}}></span>DB</span>}
