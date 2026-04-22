@@ -1259,7 +1259,7 @@ const G = "#0C1F0E"; const GM = "#1B4332"; const GL = "#2D6A4F"; const GOLD = "#
    the Customer Pricing page. BUMP THIS INTEGER ON EVERY DEPLOY. Simple,
    monotonic, unambiguous — no letter stages, no dotted sub-versions.
    Whatever was live before gets +1 on the next ship. */
-const VERSION = 33;
+const VERSION = 34;
 const VERSION_LABEL = `v${VERSION}`;
 
 /* Sort lengths numerically shortest first: "16', 8'" → "8', 16'" */
@@ -2888,61 +2888,57 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
         borderRadius:8, padding:22, marginBottom:18,
         boxShadow:"0 4px 14px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08)"
       }}>
-        <div style={{fontSize:13,fontWeight:900,color:"#fff",letterSpacing:1.6,marginBottom:4,textTransform:'uppercase'}}>Product Master List</div>
-        <div style={{fontSize:11,color:"rgba(232,220,255,0.78)",marginBottom:16,lineHeight:1.5,fontWeight:500}}>
-          Upload your ERP's product catalog export. Re-importing stages a diff for review before committing to the live catalog.
-        </div>
+        {/* v33: two-column layout mirrors CustomerListAdmin above — left has
+            header/subline/stats/button, right has the drop zone. Publish
+            staging + input stay below the grid spanning full width. */}
+        <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(200px, 280px)",gap:18,alignItems:"stretch"}}>
+          {/* LEFT column */}
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:900,color:"#fff",letterSpacing:1.6,marginBottom:4,textTransform:'uppercase'}}>Product Master List</div>
+            <div style={{fontSize:12,color:"rgba(232,220,255,0.82)",marginBottom:14,lineHeight:1.5,fontWeight:500}}>
+              Upload your ERP's product catalog export. Re-importing stages a diff for review before committing to the live catalog.
+            </div>
 
-        {/* Stats — onDark variant: dark pill + gold border + gold label,
-            readable against the purple gradient. Kept all the existing
-            metrics from the old header-stats row (data source, root count,
-            visible/hidden, price levels, csv rows, field edits) so no
-            information is lost — just reorganized into one elevated card. */}
-        <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
-          <StatPill variant="onDark" label="Source"     value={parseStats?.source==='csv'?'CSV Import':'Embedded'}/>
-          <StatPill variant="onDark" label="Root SKUs"  value={parseStats?.rootCount||0}/>
-          <StatPill variant="onDark" label="Visible"    value={visibleCount}/>
-          <StatPill variant="onDark" label="Hidden"     value={hiddenCount}/>
-          {parseStats?.hasLevels && (
-            <StatPill variant="onDark" label="Price Levels" value={parseStats.levelSummary?.length||0}/>
-          )}
-          {parseStats?.rawCount && parseStats.rawCount !== '—' && (
-            <StatPill variant="onDark" label="CSV Rows" value={parseStats.rawCount}/>
-          )}
-          <StatPill variant="onDark" label="Field Edits" value={Object.keys(overrides).length}/>
-        </div>
+            {/* Stats — onDark variant: dark pill + gold border + gold label,
+                readable against the purple gradient. */}
+            <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+              <StatPill variant="onDark" label="Source"     value={parseStats?.source==='csv'?'CSV Import':'Embedded'}/>
+              <StatPill variant="onDark" label="Root SKUs"  value={parseStats?.rootCount||0}/>
+              <StatPill variant="onDark" label="Visible"    value={visibleCount}/>
+              <StatPill variant="onDark" label="Hidden"     value={hiddenCount}/>
+              {parseStats?.hasLevels && (
+                <StatPill variant="onDark" label="Price Levels" value={parseStats.levelSummary?.length||0}/>
+              )}
+              {parseStats?.rawCount && parseStats.rawCount !== '—' && (
+                <StatPill variant="onDark" label="CSV Rows" value={parseStats.rawCount}/>
+              )}
+              <StatPill variant="onDark" label="Field Edits" value={Object.keys(overrides).length}/>
+            </div>
 
-        {/* Primary action: Import button (opens file picker). The existing
-            drop zone is preserved directly below as a tertiary path so
-            drag-and-drop still works for people who prefer it — but the
-            button is now the obvious primary action, matching Customer
-            Master's pattern. */}
-        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-          <button onClick={()=>fileRef.current?.click()}
-            style={{padding:"10px 20px",borderRadius:6,border:`1px solid ${GOLD}`,background:"linear-gradient(180deg,#1a1a1a 0%,#000 100%)",color:GOLD,fontSize:11,fontWeight:900,letterSpacing:0.8,cursor:"pointer",boxShadow:"0 2px 6px rgba(0,0,0,0.5)"}}>
-            + Import Product File
-          </button>
-          <span style={{fontSize:10,color:"rgba(232,220,255,0.55)",fontWeight:600,letterSpacing:0.3}}>
-            or drop a CSV on the zone below
-          </span>
-        </div>
-
-        {/* Drop zone — kept for power users, but visually subdued inside
-            the card so the Import button remains the primary affordance. */}
-        <div onDragOver={e=>{e.preventDefault();setDragOver(true)}} onDragLeave={()=>setDragOver(false)} onDrop={handleDrop}
-          style={{marginTop:12,background:dragOver?"rgba(197,165,90,0.12)":"rgba(0,0,0,0.35)",borderRadius:8,padding:"16px",border:`2px dashed ${dragOver?GOLD:"rgba(232,220,255,0.18)"}`,textAlign:"center",cursor:"pointer",transition:"all 0.2s"}}
-          onClick={()=>fileRef.current?.click()}>
-          <input ref={fileRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])}/>
-          <div style={{fontSize:11,color:dragOver?GOLD:"rgba(232,220,255,0.6)",fontWeight:600}}>
-            {dragOver ? "Release to upload" : "Drop product database CSV here"}
+            {/* Primary action: Import button (opens file picker). */}
+            <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+              <button onClick={()=>fileRef.current?.click()}
+                style={{padding:"10px 20px",borderRadius:6,border:`1px solid ${GOLD}`,background:"linear-gradient(180deg,#1a1a1a 0%,#000 100%)",color:GOLD,fontSize:11,fontWeight:900,letterSpacing:0.8,cursor:"pointer",boxShadow:"0 2px 6px rgba(0,0,0,0.5)"}}>
+                + Import Product File
+              </button>
+            </div>
           </div>
-          <div style={{fontSize:10,color:"rgba(232,220,255,0.4)",marginTop:3}}>Columns: SKU, Description, Category, Sub-Category, Price, UOM</div>
+
+          {/* RIGHT column — drop zone */}
+          <div onDragOver={e=>{e.preventDefault();setDragOver(true)}} onDragLeave={()=>setDragOver(false)} onDrop={handleDrop}
+            style={{background:dragOver?"rgba(197,165,90,0.14)":"rgba(0,0,0,0.40)",borderRadius:8,padding:"16px",border:`2px dashed ${dragOver?GOLD:"rgba(232,220,255,0.22)"}`,textAlign:"center",cursor:"pointer",transition:"all 0.2s",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:120}}
+            onClick={()=>fileRef.current?.click()}>
+            <input ref={fileRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])}/>
+            <div style={{fontSize:20,color:dragOver?GOLD:"rgba(232,220,255,0.5)",marginBottom:6,lineHeight:1}}>⬆</div>
+            <div style={{fontSize:12,color:dragOver?GOLD:"rgba(232,220,255,0.82)",fontWeight:800,letterSpacing:0.3}}>
+              {dragOver ? "Release to upload" : "Drop product CSV here"}
+            </div>
+            <div style={{fontSize:10,color:"rgba(232,220,255,0.5)",marginTop:4,lineHeight:1.4}}>SKU · Desc · Category<br/>Sub-Cat · Price · UOM</div>
+          </div>
         </div>
 
         {/* Publish staging — only when a fresh CSV is parsed and waiting.
-            Kept inside the Product Master List card since it's part of the
-            same import flow. Dark panel + gold accents reads cleanly
-            against the purple gradient. */}
+            Stays below the grid spanning full width since it's a banner. */}
         {canPublish && (
           <div style={{
             marginTop:14,
@@ -3115,7 +3111,7 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
           staged CSV automatically via the useEffect above.
           ═══════════════════════════════════════════════════════════════ */}
       <div style={{marginBottom:24}}>
-        <button onClick={()=>setShowRoutingPanel(!showRoutingPanel)} style={{display:"flex",alignItems:"center",gap:8,padding:"12px 18px",borderRadius:showRoutingPanel?"8px 8px 0 0":8,border:`1px solid ${GOLD}`,borderBottom:showRoutingPanel?"none":`1px solid ${GOLD}`,background:"linear-gradient(145deg, #0a0a0a 0%, #0f1a2e 100%)",color:GOLD,fontSize:13,fontWeight:900,cursor:"pointer",width:"100%",justifyContent:"space-between",letterSpacing:1,textTransform:"uppercase"}}>
+        <button onClick={()=>setShowRoutingPanel(!showRoutingPanel)} style={{display:"flex",alignItems:"center",gap:8,padding:"12px 18px",borderRadius:showRoutingPanel?"8px 8px 0 0":8,border:`1px solid ${GOLD}`,borderBottom:showRoutingPanel?"none":`1px solid ${GOLD}`,background:"#000",color:GOLD,fontSize:13,fontWeight:900,boxShadow:"0 0 18px rgba(197,165,90,0.28), 0 0 38px rgba(197,165,90,0.10)",cursor:"pointer",width:"100%",justifyContent:"space-between",letterSpacing:1,textTransform:"uppercase"}}>
           <span style={{display:"flex",alignItems:"center",gap:10}}>
             <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:20,height:20,borderRadius:"50%",background:GOLD,color:"#000",fontSize:10,fontWeight:800,fontFamily:"'IBM Plex Mono',monospace"}}>1</span>
             <span>Routing Rules — reclassify, merge, or exclude PG Major / Minor combinations</span>
@@ -3124,7 +3120,7 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
           <span style={{fontSize:14}}>{showRoutingPanel?'▲':'▼'}</span>
         </button>
         {showRoutingPanel && (
-          <div style={{background:"linear-gradient(145deg, #0a0a0a 0%, #0f1a2e 100%)",borderRadius:"0 0 8px 8px",border:`1px solid ${GOLD}`,borderTop:"none",padding:20}}>
+          <div style={{background:"#000",borderRadius:"0 0 8px 8px",border:`1px solid ${GOLD}`,borderTop:"none",padding:20,boxShadow:"0 0 18px rgba(197,165,90,0.28), 0 0 38px rgba(197,165,90,0.10)"}}>
             <div style={{fontSize:11,color:"rgba(255,255,255,0.6)",marginBottom:16,lineHeight:1.6}}>
               Runs first, before any parsing. Use <strong style={{color:GOLD}}>*</strong> to match every minor under a major.
               {parseStats?.routingStats && (
@@ -3197,7 +3193,7 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
           inherit from `defaults` unless overridden.
           ═══════════════════════════════════════════════════════════════ */}
       <div style={{marginBottom:24}}>
-        <button onClick={()=>setShowParsingPanel(!showParsingPanel)} style={{display:"flex",alignItems:"center",gap:8,padding:"12px 18px",borderRadius:showParsingPanel?"8px 8px 0 0":8,border:`1px solid ${GOLD}`,borderBottom:showParsingPanel?"none":`1px solid ${GOLD}`,background:"linear-gradient(145deg, #0a0a0a 0%, #0f1a2e 100%)",color:GOLD,fontSize:13,fontWeight:900,cursor:"pointer",width:"100%",justifyContent:"space-between",letterSpacing:1,textTransform:"uppercase"}}>
+        <button onClick={()=>setShowParsingPanel(!showParsingPanel)} style={{display:"flex",alignItems:"center",gap:8,padding:"12px 18px",borderRadius:showParsingPanel?"8px 8px 0 0":8,border:`1px solid ${GOLD}`,borderBottom:showParsingPanel?"none":`1px solid ${GOLD}`,background:"#000",color:GOLD,fontSize:13,fontWeight:900,boxShadow:"0 0 18px rgba(197,165,90,0.28), 0 0 38px rgba(197,165,90,0.10)",cursor:"pointer",width:"100%",justifyContent:"space-between",letterSpacing:1,textTransform:"uppercase"}}>
           <span style={{display:"flex",alignItems:"center",gap:10}}>
             <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:20,height:20,borderRadius:"50%",background:GOLD,color:"#000",fontSize:10,fontWeight:800,fontFamily:"'IBM Plex Mono',monospace"}}>2</span>
             <span>Parsing Rules — per-category SKU &amp; description cleaning</span>
@@ -3206,7 +3202,7 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
           <span style={{fontSize:14}}>{showParsingPanel?'▲':'▼'}</span>
         </button>
         {showParsingPanel && (
-          <div style={{background:"linear-gradient(145deg, #0a0a0a 0%, #0f1a2e 100%)",borderRadius:"0 0 8px 8px",border:`1px solid ${GOLD}`,borderTop:"none",padding:20}}>
+          <div style={{background:"#000",borderRadius:"0 0 8px 8px",border:`1px solid ${GOLD}`,borderTop:"none",padding:20,boxShadow:"0 0 18px rgba(197,165,90,0.28), 0 0 38px rgba(197,165,90,0.10)"}}>
             <div style={{fontSize:11,color:"rgba(255,255,255,0.6)",marginBottom:16,lineHeight:1.6}}>
               Each category gets its own rule set. Pick a category below — all edits apply to that category only. <strong style={{color:GOLD}}>Global defaults</strong> holds the baseline; categories inherit unless overridden.
             </div>
@@ -3388,7 +3384,7 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
           deck. Same black → dark-navy gradient + solid gold border as
           Routing and Parsing above, so all three read as a set. */}
       <div style={{marginBottom:24}}>
-        <button onClick={()=>setShowLevelVis(!showLevelVis)} style={{display:"flex",alignItems:"center",gap:8,padding:"12px 18px",borderRadius:showLevelVis?"8px 8px 0 0":8,border:`1px solid ${GOLD}`,borderBottom:showLevelVis?"none":`1px solid ${GOLD}`,background:"linear-gradient(145deg, #0a0a0a 0%, #0f1a2e 100%)",color:GOLD,fontSize:13,fontWeight:900,cursor:"pointer",width:"100%",justifyContent:"space-between",letterSpacing:1,textTransform:"uppercase"}}>
+        <button onClick={()=>setShowLevelVis(!showLevelVis)} style={{display:"flex",alignItems:"center",gap:8,padding:"12px 18px",borderRadius:showLevelVis?"8px 8px 0 0":8,border:`1px solid ${GOLD}`,borderBottom:showLevelVis?"none":`1px solid ${GOLD}`,background:"#000",color:GOLD,fontSize:13,fontWeight:900,boxShadow:"0 0 18px rgba(197,165,90,0.28), 0 0 38px rgba(197,165,90,0.10)",cursor:"pointer",width:"100%",justifyContent:"space-between",letterSpacing:1,textTransform:"uppercase"}}>
           <span style={{display:"flex",alignItems:"center",gap:10}}>
             <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:20,height:20,borderRadius:"50%",background:GOLD,color:"#000",fontSize:10,fontWeight:800,fontFamily:"'IBM Plex Mono',monospace"}}>3</span>
             <span>Price Level Visibility — control which price levels customers can see</span>
@@ -3396,7 +3392,7 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
           <span style={{fontSize:14}}>{showLevelVis?'▲':'▼'}</span>
         </button>
         {showLevelVis && (
-          <div style={{background:"linear-gradient(145deg, #0a0a0a 0%, #0f1a2e 100%)",borderRadius:"0 0 8px 8px",border:`1px solid ${GOLD}`,borderTop:"none",padding:20}}>
+          <div style={{background:"#000",borderRadius:"0 0 8px 8px",border:`1px solid ${GOLD}`,borderTop:"none",padding:20,boxShadow:"0 0 18px rgba(197,165,90,0.28), 0 0 38px rgba(197,165,90,0.10)"}}>
             <div style={{fontSize:11,color:"rgba(255,255,255,0.6)",marginBottom:16,lineHeight:1.6}}>
               Set global defaults, then override per category. Unchecked levels are hidden from customer views. Category cells inherit from Global unless explicitly overridden (shown with a <strong style={{color:"#4CAF50"}}>green dot</strong>).
             </div>
@@ -4302,56 +4298,60 @@ function CustomerListAdmin() {
 
   return (
     <div style={cardStyle}>
-      <div style={cardHeaderStyle}>Customer Master List</div>
-      <div style={cardSublineStyle}>
-        Upload your ERP's customer universe export. Re-importing merges additions and refreshes changed rows; existing ship-tos that disappeared from the new export are preserved.
-      </div>
+      {/* v33: two-column layout — left has header/subline/stats/button,
+          right has the drop zone filling full height. Kills the dead
+          vertical space the drop zone previously added below the button. */}
+      <div style={{display:"grid",gridTemplateColumns:pendingRows?"1fr":"minmax(0,1fr) minmax(200px, 280px)",gap:18,alignItems:"stretch"}}>
+        {/* LEFT column */}
+        <div style={{minWidth:0}}>
+          <div style={cardHeaderStyle}>Customer Master List</div>
+          <div style={{...cardSublineStyle, fontSize:12}}>
+            Upload your ERP's customer universe export. Re-importing merges additions and refreshes changed rows; existing ship-tos are preserved.
+          </div>
 
-      {/* Stats — 1B.4: variant="onGold" inverts pills to dark-on-gold
-          so labels and values are readable against the gold card. */}
-      <div style={{display:"flex",gap:16,marginBottom:16,flexWrap:"wrap"}}>
-        <StatPill variant="onGold" label="Ship-to rows" value={stats.totalRows}/>
-        <StatPill variant="onGold" label="Customers"   value={stats.totalCustomers}/>
-        <StatPill variant="onGold" label="Branches"    value={stats.totalBranches}/>
-        {customerList && customerList.importedAt && (
-          <StatPill variant="onGold" label="Last import" value={new Date(customerList.importedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}/>
+          {/* Stats — v32: variant="onGold" inverts pills to dark-on-gold
+              so labels and values are readable against the gold card. */}
+          <div style={{display:"flex",gap:12,marginBottom:14,flexWrap:"wrap"}}>
+            <StatPill variant="onGold" label="Ship-to rows" value={stats.totalRows}/>
+            <StatPill variant="onGold" label="Customers"   value={stats.totalCustomers}/>
+            <StatPill variant="onGold" label="Branches"    value={stats.totalBranches}/>
+            {customerList && customerList.importedAt && (
+              <StatPill variant="onGold" label="Last import" value={new Date(customerList.importedAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}/>
+            )}
+          </div>
+
+          {/* Upload + clear */}
+          {!pendingRows && (
+            <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+              <button onClick={()=>fileRef.current && fileRef.current.click()}
+                style={{padding:"10px 20px",borderRadius:6,border:"1px solid #1a1200",background:"linear-gradient(180deg,#1a1a1a 0%,#000 100%)",color:GOLD,fontSize:11,fontWeight:900,letterSpacing:0.8,cursor:"pointer",boxShadow:"0 2px 6px rgba(0,0,0,0.4)"}}>
+                + Import Customer File
+              </button>
+              <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}}
+                onChange={e=>{ handleFile(e.target.files[0]); e.target.value=''; }}/>
+              {stats.totalRows > 0 && (
+                <button onClick={clearAll}
+                  style={{padding:"10px 18px",borderRadius:6,border:"1px solid #7a1e1e",background:"rgba(255,255,255,0.6)",color:"#7a1e1e",fontSize:10,fontWeight:900,letterSpacing:0.8,cursor:"pointer"}}>
+                  Clear all
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT column — drop zone (hidden during column-mapping) */}
+        {!pendingRows && (
+          <div onDragOver={e=>{e.preventDefault();setDragOver(true)}} onDragLeave={()=>setDragOver(false)} onDrop={handleDrop}
+            style={{background:dragOver?"rgba(26,18,0,0.22)":"rgba(26,18,0,0.10)",borderRadius:8,padding:"16px",border:`2px dashed ${dragOver?"#1a1200":"rgba(26,18,0,0.36)"}`,textAlign:"center",cursor:"pointer",transition:"all 0.2s",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:120}}
+            onClick={()=>fileRef.current?.click()}>
+            <div style={{fontSize:20,color:dragOver?"#1a1200":"rgba(26,18,0,0.5)",marginBottom:6,lineHeight:1}}>⬆</div>
+            <div style={{fontSize:12,color:dragOver?"#1a1200":"rgba(26,18,0,0.78)",fontWeight:800,letterSpacing:0.3}}>
+              {dragOver ? "Release to upload" : "Drop customer file here"}
+            </div>
+            <div style={{fontSize:10,color:"rgba(26,18,0,0.58)",marginTop:4,fontWeight:500,lineHeight:1.4}}>.xlsx · .xls · .csv<br/>headers auto-map</div>
+          </div>
         )}
       </div>
-
-      {/* Upload + clear */}
-      {!pendingRows && (
-        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-          <button onClick={()=>fileRef.current && fileRef.current.click()}
-            style={{padding:"10px 20px",borderRadius:6,border:"1px solid #1a1200",background:"linear-gradient(180deg,#1a1a1a 0%,#000 100%)",color:GOLD,fontSize:11,fontWeight:900,letterSpacing:0.8,cursor:"pointer",boxShadow:"0 2px 6px rgba(0,0,0,0.4)"}}>
-            + Import Customer File
-          </button>
-          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}}
-            onChange={e=>{ handleFile(e.target.files[0]); e.target.value=''; }}/>
-          {stats.totalRows > 0 && (
-            <button onClick={clearAll}
-              style={{padding:"10px 18px",borderRadius:6,border:"1px solid #7a1e1e",background:"rgba(255,255,255,0.6)",color:"#7a1e1e",fontSize:10,fontWeight:900,letterSpacing:0.8,cursor:"pointer"}}>
-              Clear all
-            </button>
-          )}
-          <span style={{fontSize:10,color:"rgba(26,18,0,0.6)",fontWeight:600,letterSpacing:0.3}}>
-            or drop a file on the zone below
-          </span>
-        </div>
-      )}
-
-      {/* 1B.4.1: drag-and-drop zone — mirrors the Product Master List card.
-          Tertiary path for users who prefer drag-and-drop. Styled for the
-          gold background: darker fill, muted dashed border, dark text. */}
-      {!pendingRows && (
-        <div onDragOver={e=>{e.preventDefault();setDragOver(true)}} onDragLeave={()=>setDragOver(false)} onDrop={handleDrop}
-          style={{marginTop:12,background:dragOver?"rgba(26,18,0,0.18)":"rgba(26,18,0,0.08)",borderRadius:8,padding:"16px",border:`2px dashed ${dragOver?"#1a1200":"rgba(26,18,0,0.32)"}`,textAlign:"center",cursor:"pointer",transition:"all 0.2s"}}
-          onClick={()=>fileRef.current?.click()}>
-          <div style={{fontSize:11,color:dragOver?"#1a1200":"rgba(26,18,0,0.72)",fontWeight:700}}>
-            {dragOver ? "Release to upload" : "Drop customer list file here"}
-          </div>
-          <div style={{fontSize:10,color:"rgba(26,18,0,0.55)",marginTop:3,fontWeight:500}}>Accepts .xlsx, .xls, .csv — headers map automatically</div>
-        </div>
-      )}
 
       {importError && (
         <div style={{marginTop:12,padding:"9px 13px",background:"#7a1e1e",border:"1px solid #3d0f0f",borderRadius:4,color:"#fff",fontSize:11,fontWeight:700}}>
@@ -5572,7 +5572,7 @@ function App() {
         )}
       </div>
 
-      <div style={{maxWidth:1500,margin:"0 auto",padding:"108px 24px 20px"}}>
+      <div style={{maxWidth:1500,margin:"0 auto",padding:page==="portal"?"108px 24px 20px":"88px 24px 20px"}}>
         {page === "admin" && <AdminPanel user={user} tiers={tiers} setTiers={setTiers} team={team} setTeam={setTeam}/>}
         {page === "productadmin" && <ProductAdmin levelVis={levelVis} setLevelVis={setLevelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn} setShowAllPriceLevelsBtn={setShowAllPriceLevelsBtn} hiddenSkuSet={hiddenSkuSet} onVisibilityChange={(hidden) => setHiddenSkuSet(new Set(hidden))} productOverrides={productOverrides} setProductOverrides={updateProductOverrides} effectiveCat={effectiveCat} publishedMeta={publishedMeta} onPublish={publishCatalog} onRevertPublished={revertPublishedCatalog}/>}
         {/* v32: Customer Pricing admin page. Stage 1B reads the published Mouldings
