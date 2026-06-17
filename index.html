@@ -1340,7 +1340,7 @@ const G = "#0C1F0E"; const GM = "#1B4332"; const GL = "#2D6A4F"; const GOLD = "#
    the Customer Pricing page. BUMP THIS INTEGER ON EVERY DEPLOY. Simple,
    monotonic, unambiguous — no letter stages, no dotted sub-versions.
    Whatever was live before gets +1 on the next ship. */
-const VERSION = 36;
+const VERSION = 37;
 const VERSION_LABEL = `v${VERSION}`;
 
 /* Sort lengths numerically shortest first: "16', 8'" → "8', 16'" */
@@ -1377,6 +1377,9 @@ function LoginPage({onLogin}) {
   const [pass, setPass] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  /* v37: "forgot" mode swaps the password field for a reset-request flow. */
+  const [mode, setMode] = useState("login");   // "login" | "forgot"
+  const [resetSent, setResetSent] = useState(false);
   const handleLogin = async () => {
     setLoading(true);
     setError("");
@@ -1393,6 +1396,27 @@ function LoginPage({onLogin}) {
     }
     setLoading(false);
   };
+  /* v37: send a Supabase password-recovery email. redirectTo MUST be the
+     production domain (the Site URL / redirect allow-list in Supabase must
+     also list it) or the email link 404s. We always report success even if
+     the email isn't on file — that avoids leaking which emails exist. */
+  const handleForgot = async () => {
+    if (!email.trim()) { setError("Enter your email address first."); return; }
+    setLoading(true);
+    setError("");
+    try {
+      await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: "https://priceportal.gslapps.com/"
+      });
+      setResetSent(true);
+    } catch(e) {
+      console.error("reset error", e);
+      setError("Could not send the reset email. Check your connection and try again.");
+    }
+    setLoading(false);
+  };
+  const goForgot = () => { setMode("forgot"); setError(""); setResetSent(false); };
+  const goLogin  = () => { setMode("login");  setError(""); setResetSent(false); };
   return (
     <div style={{minHeight:"100vh",background:`linear-gradient(160deg,#000 0%,${G} 40%,${GM} 70%,#000 100%)`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Archivo',sans-serif"}}>
       <div style={{width:"100%",maxWidth:420,padding:40}}>
@@ -1402,21 +1426,109 @@ function LoginPage({onLogin}) {
           <div style={{fontSize:11,color:GOLD,fontWeight:700,letterSpacing:3,marginTop:6}}>CUSTOMER PRICE PORTAL</div>
         </div>
         <div style={{background:"linear-gradient(160deg,#000 0%,#0A1A10 50%,#0C1F0E 100%)",borderRadius:16,padding:32,border:"1px solid rgba(197,165,90,0.15)",boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
-          <div style={{fontSize:13,color:"rgba(255,255,255,0.5)",marginBottom:20,textAlign:"center",lineHeight:1.6}}>Sign in with the credentials provided by your account administrator.</div>
+          <div style={{fontSize:13,color:"rgba(255,255,255,0.5)",marginBottom:20,textAlign:"center",lineHeight:1.6}}>{mode==="forgot" ? "Enter your email and we'll send you a link to reset your password." : "Sign in with the credentials provided by your account administrator."}</div>
           {error && <div style={{marginBottom:12,padding:"8px 12px",borderRadius:6,background:"rgba(255,80,80,0.15)",border:"1px solid rgba(255,80,80,0.3)",color:"#ff6b6b",fontSize:12,fontWeight:600,textAlign:"center"}}>{error}</div>}
-          <div style={{marginBottom:16}}>
-            <label style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:1.5,display:"block",marginBottom:6}}>EMAIL</label>
-            <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleLogin()}} placeholder="you@company.com" type="email" autoComplete="email"
-              style={{width:"100%",padding:"12px 16px",borderRadius:8,border:"1px solid rgba(197,165,90,0.2)",background:"rgba(0,0,0,0.4)",color:"#fff",fontSize:14,fontFamily:"'IBM Plex Mono',monospace",outline:"none"}}/>
-          </div>
-          <div style={{marginBottom:24}}>
-            <label style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:1.5,display:"block",marginBottom:6}}>PASSWORD</label>
-            <input type="password" value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleLogin()}} placeholder="••••••••" autoComplete="current-password"
-              style={{width:"100%",padding:"12px 16px",borderRadius:8,border:"1px solid rgba(197,165,90,0.2)",background:"rgba(0,0,0,0.4)",color:"#fff",fontSize:14,fontFamily:"'IBM Plex Mono',monospace",outline:"none"}}/>
-          </div>
-          <button onClick={handleLogin} disabled={loading}
-            style={{width:"100%",padding:"14px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${GOLD},#A8883A)`,color:G,fontSize:14,fontWeight:800,cursor:loading?"wait":"pointer",letterSpacing:1.5,textTransform:"uppercase",opacity:loading?0.7:1}}>{loading?"Signing In…":"Sign In"}</button>
-          <div style={{marginTop:16,fontSize:11,color:"rgba(255,255,255,0.3)",textAlign:"center"}}>Don't have an account? Contact your company administrator.</div>
+          {mode==="forgot" && resetSent ? (
+            /* ─── v37: reset email sent confirmation ─── */
+            <div>
+              <div style={{marginBottom:20,padding:"14px 16px",borderRadius:8,background:"rgba(197,165,90,0.1)",border:"1px solid rgba(197,165,90,0.3)",color:CREAM,fontSize:13,lineHeight:1.6,textAlign:"center"}}>
+                If an account exists for <span style={{color:GOLD,fontWeight:700}}>{email.trim()}</span>, a password reset link is on its way. Check your inbox (and spam folder).
+              </div>
+              <button onClick={goLogin}
+                style={{width:"100%",padding:"14px",borderRadius:8,border:`1px solid ${GOLD}`,background:"transparent",color:GOLD,fontSize:14,fontWeight:800,cursor:"pointer",letterSpacing:1.5,textTransform:"uppercase"}}>Back to Sign In</button>
+            </div>
+          ) : (<>
+            <div style={{marginBottom: mode==="forgot" ? 24 : 16}}>
+              <label style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:1.5,display:"block",marginBottom:6}}>EMAIL</label>
+              <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")(mode==="forgot"?handleForgot():handleLogin())}} placeholder="you@company.com" type="email" autoComplete="email"
+                style={{width:"100%",padding:"12px 16px",borderRadius:8,border:"1px solid rgba(197,165,90,0.2)",background:"rgba(0,0,0,0.4)",color:"#fff",fontSize:14,fontFamily:"'IBM Plex Mono',monospace",outline:"none"}}/>
+            </div>
+            {mode==="login" && (<div style={{marginBottom:8}}>
+              <label style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:1.5,display:"block",marginBottom:6}}>PASSWORD</label>
+              <input type="password" value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleLogin()}} placeholder="••••••••" autoComplete="current-password"
+                style={{width:"100%",padding:"12px 16px",borderRadius:8,border:"1px solid rgba(197,165,90,0.2)",background:"rgba(0,0,0,0.4)",color:"#fff",fontSize:14,fontFamily:"'IBM Plex Mono',monospace",outline:"none"}}/>
+            </div>)}
+            {mode==="login" && (<div style={{textAlign:"right",marginBottom:20}}>
+              <span onClick={goForgot} style={{fontSize:11,color:GOLD,fontWeight:600,letterSpacing:0.5,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:3}}>Forgot password?</span>
+            </div>)}
+            {mode==="login" ? (
+              <button onClick={handleLogin} disabled={loading}
+                style={{width:"100%",padding:"14px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${GOLD},#A8883A)`,color:G,fontSize:14,fontWeight:800,cursor:loading?"wait":"pointer",letterSpacing:1.5,textTransform:"uppercase",opacity:loading?0.7:1}}>{loading?"Signing In…":"Sign In"}</button>
+            ) : (
+              <button onClick={handleForgot} disabled={loading}
+                style={{width:"100%",padding:"14px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${GOLD},#A8883A)`,color:G,fontSize:14,fontWeight:800,cursor:loading?"wait":"pointer",letterSpacing:1.5,textTransform:"uppercase",opacity:loading?0.7:1}}>{loading?"Sending…":"Send Reset Link"}</button>
+            )}
+            {mode==="login"
+              ? <div style={{marginTop:16,fontSize:11,color:"rgba(255,255,255,0.3)",textAlign:"center"}}>Don't have an account? Contact your company administrator.</div>
+              : <div style={{marginTop:16,textAlign:"center"}}><span onClick={goLogin} style={{fontSize:11,color:"rgba(255,255,255,0.5)",fontWeight:600,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:3}}>Back to Sign In</span></div>}
+          </>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── v37: SET NEW PASSWORD ───────────────────────────────────────────────
+   Shown when the user arrives via a Supabase recovery link. By the time this
+   renders, App() has already exchanged the URL token for a recovery session
+   (see consumeRecoveryToken), so we can call updateUser({password}) directly.
+   On success we sign out and bounce back to a clean login screen. */
+function SetNewPasswordPage({onDone}) {
+  const [pass, setPass] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+  const submit = async () => {
+    if (pass.length < 8) { setError("Password must be at least 8 characters."); return; }
+    if (pass !== confirm) { setError("Passwords don't match."); return; }
+    setLoading(true); setError("");
+    try {
+      const { error } = await supabase.auth.updateUser({ password: pass });
+      if (error) { setError(error.message || "Could not update password."); setLoading(false); return; }
+      setDone(true);
+      /* Drop the recovery session so the next step is a fresh login. */
+      await supabase.auth.signOut();
+      CURRENT_PROFILE = null;
+    } catch(e) {
+      console.error("set password error", e);
+      setError("Could not reach the server. Try again.");
+    }
+    setLoading(false);
+  };
+  return (
+    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,#000 0%,${G} 40%,${GM} 70%,#000 100%)`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Archivo',sans-serif"}}>
+      <div style={{width:"100%",maxWidth:420,padding:40}}>
+        <div style={{textAlign:"center",marginBottom:40}}>
+          <div style={{display:"flex",justifyContent:"center",marginBottom:20}}><GSLLogo size={67}/></div>
+          <div style={{fontSize:22,fontWeight:900,color:"#fff",letterSpacing:2}}>GARDEN STATE LUMBER</div>
+          <div style={{fontSize:11,color:GOLD,fontWeight:700,letterSpacing:3,marginTop:6}}>CUSTOMER PRICE PORTAL</div>
+        </div>
+        <div style={{background:"linear-gradient(160deg,#000 0%,#0A1A10 50%,#0C1F0E 100%)",borderRadius:16,padding:32,border:"1px solid rgba(197,165,90,0.15)",boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
+          {done ? (
+            <div>
+              <div style={{marginBottom:20,padding:"14px 16px",borderRadius:8,background:"rgba(197,165,90,0.1)",border:"1px solid rgba(197,165,90,0.3)",color:CREAM,fontSize:13,lineHeight:1.6,textAlign:"center"}}>
+                Your password has been updated. You can now sign in with your new password.
+              </div>
+              <button onClick={onDone}
+                style={{width:"100%",padding:"14px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${GOLD},#A8883A)`,color:G,fontSize:14,fontWeight:800,cursor:"pointer",letterSpacing:1.5,textTransform:"uppercase"}}>Go to Sign In</button>
+            </div>
+          ) : (<>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.5)",marginBottom:20,textAlign:"center",lineHeight:1.6}}>Choose a new password for your account.</div>
+            {error && <div style={{marginBottom:12,padding:"8px 12px",borderRadius:6,background:"rgba(255,80,80,0.15)",border:"1px solid rgba(255,80,80,0.3)",color:"#ff6b6b",fontSize:12,fontWeight:600,textAlign:"center"}}>{error}</div>}
+            <div style={{marginBottom:16}}>
+              <label style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:1.5,display:"block",marginBottom:6}}>NEW PASSWORD</label>
+              <input type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••" autoComplete="new-password"
+                style={{width:"100%",padding:"12px 16px",borderRadius:8,border:"1px solid rgba(197,165,90,0.2)",background:"rgba(0,0,0,0.4)",color:"#fff",fontSize:14,fontFamily:"'IBM Plex Mono',monospace",outline:"none"}}/>
+            </div>
+            <div style={{marginBottom:24}}>
+              <label style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:1.5,display:"block",marginBottom:6}}>CONFIRM PASSWORD</label>
+              <input type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submit()}} placeholder="••••••••" autoComplete="new-password"
+                style={{width:"100%",padding:"12px 16px",borderRadius:8,border:"1px solid rgba(197,165,90,0.2)",background:"rgba(0,0,0,0.4)",color:"#fff",fontSize:14,fontFamily:"'IBM Plex Mono',monospace",outline:"none"}}/>
+            </div>
+            <button onClick={submit} disabled={loading}
+              style={{width:"100%",padding:"14px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${GOLD},#A8883A)`,color:G,fontSize:14,fontWeight:800,cursor:loading?"wait":"pointer",letterSpacing:1.5,textTransform:"uppercase",opacity:loading?0.7:1}}>{loading?"Updating…":"Update Password"}</button>
+          </>)}
         </div>
       </div>
     </div>
@@ -5304,14 +5416,40 @@ function StatPill({label, value, variant}) {
 function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  /* v37: when true, the user arrived via a password-recovery link and must
+     set a new password before anything else. Takes routing precedence over
+     the normal login/app views. */
+  const [recovery, setRecovery] = useState(false);
 
   /* v36: restore session on page load. If the user has an active Supabase
      JWT stored in localStorage (from a prior login), log them straight in
-     without showing the login screen. */
+     without showing the login screen.
+     v37: but FIRST check for a recovery token in the URL hash. The client is
+     configured with detectSessionInUrl:false, so we parse and consume it by
+     hand — otherwise the recovery session would silently auto-login the user
+     into the app instead of routing them to the reset-password screen. */
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
+        /* --- v37: recovery-link handling ------------------------------- */
+        const hash = window.location.hash || "";
+        if (hash.includes("type=recovery") && hash.includes("access_token")) {
+          const params = new URLSearchParams(hash.replace(/^#/, ""));
+          const access_token  = params.get("access_token");
+          const refresh_token = params.get("refresh_token");
+          if (access_token && refresh_token) {
+            const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+            // Strip the token from the URL so a refresh doesn't re-trigger it.
+            window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+            if (!error && !cancelled) {
+              setRecovery(true);
+              setAuthLoading(false);
+              return;   // skip normal auto-login; show the reset screen
+            }
+          }
+        }
+        /* --- normal session restore ------------------------------------ */
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user && !cancelled) {
           const profile = await loadCurrentProfile();
@@ -5329,9 +5467,11 @@ function App() {
       }
     })();
     // Also subscribe to auth changes so external sign-outs (e.g. token
-    // revoked server-side) drop the user client-side.
+    // revoked server-side) drop the user client-side. PASSWORD_RECOVERY can
+    // also fire here if the SDK ever auto-detects; route it to the reset view.
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") { CURRENT_PROFILE = null; setUser(null); }
+      if (event === "PASSWORD_RECOVERY") { setRecovery(true); }
     });
     return () => { cancelled = true; sub?.subscription?.unsubscribe?.(); };
   }, []);
@@ -5673,6 +5813,7 @@ function App() {
       LOADING…
     </div>
   );
+  if (recovery) return <SetNewPasswordPage onDone={()=>{ setRecovery(false); setUser(null); }}/>;
   if (!user) return <LoginPage onLogin={setUser}/>;
 
   return (
