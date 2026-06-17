@@ -273,7 +273,7 @@ let CURRENT_PROFILE = null;
 async function loadCurrentProfile() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) { CURRENT_PROFILE = null; return null; }
-  const rows = await sbGet("user_profiles", "select=id,role,customer_id,full_name,is_active&id=eq." + user.id);
+  const rows = await sbGet("user_profiles", "select=id,role,customer_id,full_name,is_active,must_reset_password&id=eq." + user.id);
   CURRENT_PROFILE = (rows && rows[0]) ? { ...rows[0], email: user.email } : null;
   return CURRENT_PROFILE;
 }
@@ -370,6 +370,52 @@ async function authenticateUser(email, password) {
 async function signOutUser() {
   CURRENT_PROFILE = null;
   await supabase.auth.signOut();
+}
+
+/* ─── v37: user management ──────────────────────────────────────────────── */
+
+/** Call the create-user Edge Function. Returns the parsed JSON response
+ *  ({success, user_id, email, temp_password} or {success:false, error}).
+ *  The function enforces authorization server-side from the caller's JWT. */
+async function createUserViaFunction({ email, full_name, role, customer_id, temp_password }) {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return { success: false, error: "Not signed in" };
+    const r = await fetch(SUPABASE_URL + "/functions/v1/create-user", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + token,
+        "apikey": SUPABASE_ANON_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, full_name, role, customer_id, temp_password }),
+    });
+    const data = await r.json().catch(() => ({ success: false, error: "Bad response from server" }));
+    if (!r.ok && data.success === undefined) {
+      return { success: false, error: data.error || ("Request failed (" + r.status + ")") };
+    }
+    return data;
+  } catch (e) {
+    console.error("createUserViaFunction", e);
+    return { success: false, error: "Could not reach the server." };
+  }
+}
+
+/** Load all customers (super admin only; RLS allows super_admin read-all). */
+async function loadCustomers() {
+  return await sbGet("customers", "select=id,name,slug&order=name.asc") || [];
+}
+
+/** Clear the current user's temporary-password flag via a SECURITY DEFINER
+ *  RPC (see 03_user_management.sql). Self-scoped to auth.uid(). */
+async function clearMyPasswordResetFlag() {
+  try {
+    const { error } = await supabase.rpc("clear_my_password_reset_flag");
+    if (error) { console.error("clearMyPasswordResetFlag", error); return false; }
+    if (CURRENT_PROFILE) CURRENT_PROFILE.must_reset_password = false;
+    return true;
+  } catch (e) { console.error("clearMyPasswordResetFlag", e); return false; }
 }
 
 /** Load team members for the current customer (RLS also enforces this). */
@@ -1472,13 +1518,16 @@ function LoginPage({onLogin}) {
    Shown when the user arrives via a Supabase recovery link. By the time this
    renders, App() has already exchanged the URL token for a recovery session
    (see consumeRecoveryToken), so we can call updateUser({password}) directly.
-   On success we sign out and bounce back to a clean login screen. */
-function SetNewPasswordPage({onDone}) {
+   v37: mode="recovery" (from email link) signs out and returns to login;
+        mode="temp" (first login on an admin-issued temp password) keeps the
+        session, clears the must_reset flag, and continues into the app. */
+function SetNewPasswordPage({onDone, mode}) {
   const [pass, setPass] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const isTemp = mode === "temp";
   const submit = async () => {
     if (pass.length < 8) { setError("Password must be at least 8 characters."); return; }
     if (pass !== confirm) { setError("Passwords don't match."); return; }
@@ -1486,10 +1535,15 @@ function SetNewPasswordPage({onDone}) {
     try {
       const { error } = await supabase.auth.updateUser({ password: pass });
       if (error) { setError(error.message || "Could not update password."); setLoading(false); return; }
+      if (isTemp) {
+        /* First-login flow: clear the temp flag and stay signed in. */
+        await clearMyPasswordResetFlag();
+      } else {
+        /* Recovery flow: drop the session so the next step is a fresh login. */
+        await supabase.auth.signOut();
+        CURRENT_PROFILE = null;
+      }
       setDone(true);
-      /* Drop the recovery session so the next step is a fresh login. */
-      await supabase.auth.signOut();
-      CURRENT_PROFILE = null;
     } catch(e) {
       console.error("set password error", e);
       setError("Could not reach the server. Try again.");
@@ -1508,13 +1562,13 @@ function SetNewPasswordPage({onDone}) {
           {done ? (
             <div>
               <div style={{marginBottom:20,padding:"14px 16px",borderRadius:8,background:"rgba(197,165,90,0.1)",border:"1px solid rgba(197,165,90,0.3)",color:CREAM,fontSize:13,lineHeight:1.6,textAlign:"center"}}>
-                Your password has been updated. You can now sign in with your new password.
+                {isTemp ? "Your password is set. You're all set to use the portal." : "Your password has been updated. You can now sign in with your new password."}
               </div>
               <button onClick={onDone}
-                style={{width:"100%",padding:"14px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${GOLD},#A8883A)`,color:G,fontSize:14,fontWeight:800,cursor:"pointer",letterSpacing:1.5,textTransform:"uppercase"}}>Go to Sign In</button>
+                style={{width:"100%",padding:"14px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${GOLD},#A8883A)`,color:G,fontSize:14,fontWeight:800,cursor:"pointer",letterSpacing:1.5,textTransform:"uppercase"}}>{isTemp ? "Continue" : "Go to Sign In"}</button>
             </div>
           ) : (<>
-            <div style={{fontSize:13,color:"rgba(255,255,255,0.5)",marginBottom:20,textAlign:"center",lineHeight:1.6}}>Choose a new password for your account.</div>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.5)",marginBottom:20,textAlign:"center",lineHeight:1.6}}>{isTemp ? "Welcome! Set a password for your account to continue." : "Choose a new password for your account."}</div>
             {error && <div style={{marginBottom:12,padding:"8px 12px",borderRadius:6,background:"rgba(255,80,80,0.15)",border:"1px solid rgba(255,80,80,0.3)",color:"#ff6b6b",fontSize:12,fontWeight:600,textAlign:"center"}}>{error}</div>}
             <div style={{marginBottom:16}}>
               <label style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:1.5,display:"block",marginBottom:6}}>NEW PASSWORD</label>
@@ -1553,7 +1607,53 @@ function AdminPanel({user, tiers, setTiers, team, setTeam}) {
   const addMember = async () => { if (!newEmail.trim()) return; const saved = await addTeamMember(newEmail.trim(), newRole, user?.company || ""); if (saved && saved.id) { setTeam([...team, {id: saved.id, email: saved.email, role: saved.role, added: new Date(saved.added_at).toLocaleDateString()}]); } else { setTeam([...team, {id: Date.now(), email: newEmail.trim(), role: newRole, added: new Date().toLocaleDateString()}]); } setNewEmail(""); };
   const removeMember = async (id) => { await deleteTeamMember(id); setTeam(team.filter(t=>t.id!==id)); };
   const markupToMargin = (m) => ((1 - 1/m) * 100).toFixed(1);
-  const tabs = [{key:"tiers",label:"Customer Tiers"},{key:"team",label:"Team Members"},{key:"account",label:"Account"}];
+
+  /* ─── v37: super-admin user creation ─── */
+  const isSuper = user?.role === "super_admin";
+  const [cust, setCust] = useState([]);                       // customers list
+  const [uForm, setUForm] = useState({ email:"", full_name:"", role:"team_member", customer_id:"", temp_password:"" });
+  const [uBusy, setUBusy] = useState(false);
+  const [uErr, setUErr] = useState("");
+  const [uResult, setUResult] = useState(null);               // {email, temp_password}
+  const [copied, setCopied] = useState(false);
+  const genTemp = () => { const w=["Maple","Cedar","Birch","Oakwood","Walnut","Poplar","Spruce","Hickory"]; return w[Math.floor(Math.random()*w.length)] + "-" + Math.floor(1000+Math.random()*9000); };
+  useEffect(() => {
+    if (isSuper && tab === "users" && cust.length === 0) { loadCustomers().then(c => setCust(c||[])); }
+    if (tab === "users" && !uForm.temp_password) setUForm(f => ({...f, temp_password: genTemp()}));
+  }, [tab]);
+  const createUser = async () => {
+    setUErr(""); setUResult(null);
+    const email = uForm.email.trim().toLowerCase();
+    if (!email || !email.includes("@")) { setUErr("Enter a valid email."); return; }
+    if ((uForm.role === "customer_admin" || uForm.role === "team_member") && !uForm.customer_id) { setUErr("Pick a customer for this role."); return; }
+    if (uForm.temp_password.trim().length < 8) { setUErr("Temp password must be at least 8 characters."); return; }
+    setUBusy(true);
+    const res = await createUserViaFunction({
+      email,
+      full_name: uForm.full_name.trim(),
+      role: uForm.role,
+      customer_id: (uForm.role === "super_admin") ? null : uForm.customer_id,
+      temp_password: uForm.temp_password.trim(),
+    });
+    setUBusy(false);
+    if (res?.success) {
+      setUResult({ email: res.email, temp_password: res.temp_password });
+      setUForm({ email:"", full_name:"", role:"team_member", customer_id:"", temp_password: genTemp() });
+    } else {
+      setUErr(res?.error || "Could not create user.");
+    }
+  };
+  const copyTemp = () => { if (uResult) { navigator.clipboard?.writeText(uResult.temp_password); setCopied(true); setTimeout(()=>setCopied(false), 1500); } };
+
+  const tabs = [
+    {key:"tiers",label:"Customer Tiers"},
+    {key:"team",label:"Team Members"},
+    ...(isSuper ? [{key:"users",label:"Users"}] : []),
+    {key:"account",label:"Account"}
+  ];
+
+  const inputStyle = {width:"100%",padding:"10px 14px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#fff",fontSize:13,outline:"none"};
+  const labelStyle = {fontSize:10,color:"rgba(255,255,255,0.4)",fontWeight:600,display:"block",marginBottom:4};
 
   return (
     <div style={{animation:"fadeIn 0.3s ease"}}>
@@ -1624,6 +1724,69 @@ function AdminPanel({user, tiers, setTiers, team, setTeam}) {
           <div style={{fontSize:12,fontWeight:700,color:GOLD,letterSpacing:1,marginBottom:12}}>INVITE TEAM MEMBER</div>
           <div style={{display:"flex",gap:10}}><input value={newEmail} onChange={e=>setNewEmail(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addMember()}} placeholder="team.member@company.com" style={{flex:1,padding:"10px 14px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#fff",fontSize:13,fontFamily:"'IBM Plex Mono',monospace",outline:"none"}}/>
             <button onClick={addMember} style={{padding:"10px 20px",borderRadius:6,border:"none",background:GOLD,color:G,fontSize:12,fontWeight:800,cursor:"pointer",letterSpacing:1,whiteSpace:"nowrap"}}>+ Send Invite</button></div>
+        </div>
+      </div>)}
+      {tab === "users" && isSuper && (<div>
+        <div style={{background:"rgba(197,165,90,0.06)",borderRadius:10,padding:16,border:"1px solid rgba(197,165,90,0.15)",marginBottom:20}}>
+          <div style={{fontSize:13,color:GOLD,fontWeight:600,marginBottom:4}}>Create a User</div>
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",lineHeight:1.6}}>Add a person to the system and assign their role. They'll sign in with the temporary password shown after creation — then they're prompted to set their own password on first login. Copy the temp password and send it to them.</div>
+        </div>
+
+        {uResult && (
+          <div style={{background:"rgba(45,95,63,0.18)",borderRadius:10,padding:18,border:"1px solid rgba(197,165,90,0.4)",marginBottom:20}}>
+            <div style={{fontSize:12,fontWeight:800,color:GOLD,letterSpacing:1,marginBottom:10}}>✓ USER CREATED</div>
+            <div style={{fontSize:13,color:"#fff",marginBottom:4}}>{uResult.email}</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",marginBottom:12}}>Send them this temporary password. They'll set their own on first login.</div>
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              <code style={{flex:"1 1 200px",padding:"12px 16px",borderRadius:8,background:"rgba(0,0,0,0.5)",border:"1px solid rgba(197,165,90,0.3)",color:GOLD,fontSize:16,fontFamily:"'IBM Plex Mono',monospace",letterSpacing:1}}>{uResult.temp_password}</code>
+              <button onClick={copyTemp} style={{padding:"12px 20px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${GOLD},#A8883A)`,color:G,fontSize:12,fontWeight:800,cursor:"pointer",letterSpacing:1,whiteSpace:"nowrap"}}>{copied?"Copied!":"Copy"}</button>
+              <button onClick={()=>setUResult(null)} style={{padding:"12px 16px",borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"rgba(255,255,255,0.5)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Done</button>
+            </div>
+          </div>
+        )}
+
+        <div style={{background:"rgba(0,0,0,0.2)",borderRadius:10,padding:20,border:"1px solid rgba(255,255,255,0.08)"}}>
+          <div style={{fontSize:12,fontWeight:700,color:GOLD,letterSpacing:1,marginBottom:16}}>NEW USER</div>
+          {uErr && <div style={{marginBottom:14,padding:"8px 12px",borderRadius:6,background:"rgba(255,80,80,0.15)",border:"1px solid rgba(255,80,80,0.3)",color:"#ff6b6b",fontSize:12,fontWeight:600}}>{uErr}</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+              <div style={{flex:"1 1 220px"}}>
+                <label style={labelStyle}>Email</label>
+                <input value={uForm.email} onChange={e=>setUForm({...uForm,email:e.target.value})} placeholder="person@company.com" type="email" style={{...inputStyle,fontFamily:"'IBM Plex Mono',monospace"}}/>
+              </div>
+              <div style={{flex:"1 1 180px"}}>
+                <label style={labelStyle}>Full Name (optional)</label>
+                <input value={uForm.full_name} onChange={e=>setUForm({...uForm,full_name:e.target.value})} placeholder="Jane Smith" style={inputStyle}/>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+              <div style={{flex:"1 1 180px"}}>
+                <label style={labelStyle}>Role</label>
+                <select value={uForm.role} onChange={e=>setUForm({...uForm,role:e.target.value, customer_id: e.target.value==="super_admin" ? "" : uForm.customer_id})} style={{...inputStyle,cursor:"pointer"}}>
+                  <option value="team_member">Team Member — read-only pricing</option>
+                  <option value="customer_admin">Customer Admin — manages one customer</option>
+                  <option value="super_admin">Super Admin — full control</option>
+                </select>
+              </div>
+              {uForm.role !== "super_admin" && (
+                <div style={{flex:"1 1 220px"}}>
+                  <label style={labelStyle}>Customer</label>
+                  <select value={uForm.customer_id} onChange={e=>setUForm({...uForm,customer_id:e.target.value})} style={{...inputStyle,cursor:"pointer"}}>
+                    <option value="">Select a customer…</option>
+                    {cust.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+            <div style={{flex:"1 1 220px"}}>
+              <label style={labelStyle}>Temporary Password</label>
+              <div style={{display:"flex",gap:8}}>
+                <input value={uForm.temp_password} onChange={e=>setUForm({...uForm,temp_password:e.target.value})} style={{...inputStyle,fontFamily:"'IBM Plex Mono',monospace",color:GOLD}}/>
+                <button onClick={()=>setUForm({...uForm,temp_password:genTemp()})} style={{padding:"10px 16px",borderRadius:6,border:"1px solid rgba(197,165,90,0.3)",background:"rgba(197,165,90,0.08)",color:GOLD,fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Regenerate</button>
+              </div>
+            </div>
+            <button onClick={createUser} disabled={uBusy} style={{padding:"12px 24px",borderRadius:6,border:"none",background:GOLD,color:G,fontSize:13,fontWeight:800,cursor:uBusy?"wait":"pointer",letterSpacing:1,opacity:uBusy?0.7:1,alignSelf:"flex-start"}}>{uBusy?"Creating…":"+ Create User"}</button>
+          </div>
         </div>
       </div>)}
       {tab === "account" && (<div>
@@ -5420,6 +5583,10 @@ function App() {
      set a new password before anything else. Takes routing precedence over
      the normal login/app views. */
   const [recovery, setRecovery] = useState(false);
+  /* v37: true when the logged-in user is still on an admin-issued temporary
+     password (user_profiles.must_reset_password). They must set a real
+     password before using the app. */
+  const [mustReset, setMustReset] = useState(false);
 
   /* v36: restore session on page load. If the user has an active Supabase
      JWT stored in localStorage (from a prior login), log them straight in
@@ -5458,6 +5625,7 @@ function App() {
               id: profile.id, email: profile.email, role: profile.role,
               customer_id: profile.customer_id, full_name: profile.full_name
             });
+            if (profile.must_reset_password) setMustReset(true);
           } else {
             await supabase.auth.signOut();
           }
@@ -5813,8 +5981,9 @@ function App() {
       LOADING…
     </div>
   );
-  if (recovery) return <SetNewPasswordPage onDone={()=>{ setRecovery(false); setUser(null); }}/>;
-  if (!user) return <LoginPage onLogin={setUser}/>;
+  if (recovery) return <SetNewPasswordPage mode="recovery" onDone={()=>{ setRecovery(false); setUser(null); }}/>;
+  if (user && mustReset) return <SetNewPasswordPage mode="temp" onDone={()=>setMustReset(false)}/>;
+  if (!user) return <LoginPage onLogin={(u)=>{ setUser(u); if (CURRENT_PROFILE?.must_reset_password) setMustReset(true); }}/>;
 
   return (
     <div style={{minHeight:"100vh",background:`linear-gradient(180deg,#000 0%,${G} 5%,#0A0A0A 100%)`,fontFamily:"'Archivo',sans-serif",color:"#fff"}}>
