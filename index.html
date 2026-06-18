@@ -1386,7 +1386,7 @@ const G = "#0C1F0E"; const GM = "#1B4332"; const GL = "#2D6A4F"; const GOLD = "#
    the Customer Pricing page. BUMP THIS INTEGER ON EVERY DEPLOY. Simple,
    monotonic, unambiguous — no letter stages, no dotted sub-versions.
    Whatever was live before gets +1 on the next ship. */
-const VERSION = 38;
+const VERSION = 39;
 const VERSION_LABEL = `v${VERSION}`;
 
 /* Sort lengths numerically shortest first: "16', 8'" → "8', 16'" */
@@ -1590,8 +1590,9 @@ function SetNewPasswordPage({onDone, mode}) {
 }
 
 /* ─── ADMIN PANEL ─── */
-function AdminPanel({user, tiers, setTiers, team, setTeam}) {
-  const [tab, setTab] = useState("tiers");
+function AdminPanel({user, tiers, setTiers, team, setTeam, productAdminProps}) {
+  const isSuper = user?.role === "super_admin";
+  const [tab, setTab] = useState(isSuper ? "cpadmin" : "tiers");
   const [newTier, setNewTier] = useState({name:"",markup:1.30});
   const [editId, setEditId] = useState(null);
   const [editName, setEditName] = useState("");
@@ -1609,7 +1610,6 @@ function AdminPanel({user, tiers, setTiers, team, setTeam}) {
   const markupToMargin = (m) => ((1 - 1/m) * 100).toFixed(1);
 
   /* ─── v37: super-admin user creation ─── */
-  const isSuper = user?.role === "super_admin";
   const [cust, setCust] = useState([]);                       // customers list
   const [uForm, setUForm] = useState({ email:"", full_name:"", role:"team_member", customer_id:"", temp_password:"" });
   const [uBusy, setUBusy] = useState(false);
@@ -1645,11 +1645,13 @@ function AdminPanel({user, tiers, setTiers, team, setTeam}) {
   };
   const copyTemp = () => { if (uResult) { navigator.clipboard?.writeText(uResult.temp_password); setCopied(true); setTimeout(()=>setCopied(false), 1500); } };
 
-  const tabs = [
-    {key:"tiers",label:"Customer Tiers"},
-    {key:"team",label:"Team Members"},
-    ...(isSuper ? [{key:"users",label:"Users"}] : []),
-    {key:"account",label:"Account"}
+  const tabs = isSuper ? [
+    {key:"cpadmin", label:"Customer & Product Admin"},
+    {key:"users",   label:"User Admin"}
+  ] : [
+    {key:"tiers",   label:"Customer Tiers"},
+    {key:"team",    label:"Team Members"},
+    {key:"account", label:"Account"}
   ];
 
   const inputStyle = {width:"100%",padding:"10px 14px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",color:"#fff",fontSize:13,outline:"none"};
@@ -1660,7 +1662,9 @@ function AdminPanel({user, tiers, setTiers, team, setTeam}) {
       <div style={{display:"flex",gap:4,marginBottom:24,background:"rgba(0,0,0,0.3)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}}>
         {tabs.map(t => (<button key={t.key} onClick={()=>setTab(t.key)} style={{flex:1,padding:"10px 16px",borderRadius:8,border:"none",background:tab===t.key?"rgba(197,165,90,0.12)":"transparent",color:tab===t.key?GOLD:"rgba(255,255,255,0.4)",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Archivo',sans-serif",transition:"all 0.15s",letterSpacing:0.5}}>{t.label}</button>))}
       </div>
-      {tab === "tiers" && (<div>
+      {(tab === "tiers" || tab === "cpadmin") && (<div>
+        {tab === "cpadmin" && productAdminProps && <div style={{marginBottom:36}}><ProductAdmin {...productAdminProps}/></div>}
+        {tab === "cpadmin" && <div style={{fontSize:13,fontWeight:900,color:GOLD,letterSpacing:1.5,margin:"0 0 16px",textTransform:"uppercase",paddingTop:8,borderTop:"1px solid rgba(197,165,90,0.15)"}}>Customer Tiers</div>}
         <div style={{background:"rgba(197,165,90,0.06)",borderRadius:10,padding:16,border:"1px solid rgba(197,165,90,0.15)",marginBottom:20}}>
           <div style={{fontSize:13,color:GOLD,fontWeight:600,marginBottom:4}}>What are Customer Tiers?</div>
           <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",lineHeight:1.6}}>Create pricing categories for your different customer types. When your sales team is working with a customer, they select a tier from the "Pricing Type" dropdown — the portal shows the marked-up sell price and hides the markup formula.</div>
@@ -6018,12 +6022,11 @@ function App() {
               <div style={{marginLeft:2}}><div style={{fontSize:17,fontWeight:900,color:"#fff",letterSpacing:1.5,lineHeight:1}}>GARDEN STATE LUMBER</div><div style={{fontSize:10,color:GOLD,fontWeight:700,letterSpacing:2.5,marginTop:4}}>PRICE PORTAL</div></div>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
-              {/* v36: nav buttons gated by role.
+              {/* v39: nav buttons gated by role.
                   - team_member (read-only): no admin buttons shown
-                  - customer_admin: Pricing Settings + Customer Pricing (their tiers, their team, their overrides)
-                  - super_admin: all three (master catalog management is super-admin-only) */}
-              {isAdmin && <button onClick={()=>setPage(page==="admin"?"portal":"admin")} style={navBtnStyle(page==="admin")}>{page==="admin"?"← Back to Pricing":"Pricing Settings"}</button>}
-              {isSuperAdminUser && <button onClick={()=>setPage(page==="productadmin"?"portal":"productadmin")} style={navBtnStyle(page==="productadmin")}>{page==="productadmin"?"← Back to Pricing":"Admin"}</button>}
+                  - customer_admin: "Pricing Settings" (their tiers, team, overrides) + Customer Pricing
+                  - super_admin: single "Admin" button → tabs: Customer & Product Admin, User Admin */}
+              {isAdmin && <button onClick={()=>setPage(page==="admin"?"portal":"admin")} style={navBtnStyle(page==="admin")}>{page==="admin"?"← Back to Pricing":(isSuperAdminUser?"Admin":"Pricing Settings")}</button>}
               {isAdmin && <button onClick={()=>setPage(page==="customerpricing"?"portal":"customerpricing")} style={navBtnStyle(page==="customerpricing")}>{page==="customerpricing"?"← Back to Pricing":"Customer Pricing"}</button>}
               {tiersLoaded && <span style={{fontSize:9,color:"#4ade80",fontWeight:600,display:"inline-flex",alignItems:"center",gap:3}}><span style={{width:6,height:6,borderRadius:"50%",background:"#4ade80",display:"inline-block"}}></span>DB</span>}
               {/* Stage 1B.3: persistent version chip so the running version is always visible on the main page. */}
@@ -6053,8 +6056,7 @@ function App() {
       </div>
 
       <div style={{maxWidth:1500,margin:"0 auto",padding:page==="portal"?"108px 24px 20px":"88px 24px 20px"}}>
-        {page === "admin" && isAdmin && <AdminPanel user={user} tiers={tiers} setTiers={setTiers} team={team} setTeam={setTeam}/>}
-        {page === "productadmin" && isSuperAdminUser && <ProductAdmin levelVis={levelVis} setLevelVis={setLevelVis} showAllPriceLevelsBtn={showAllPriceLevelsBtn} setShowAllPriceLevelsBtn={setShowAllPriceLevelsBtn} hiddenSkuSet={hiddenSkuSet} onVisibilityChange={(hidden) => setHiddenSkuSet(new Set(hidden))} productOverrides={productOverrides} setProductOverrides={updateProductOverrides} effectiveCat={effectiveCat} publishedMeta={publishedMeta} onPublish={publishCatalog} onRevertPublished={revertPublishedCatalog}/>}
+        {page === "admin" && isAdmin && <AdminPanel user={user} tiers={tiers} setTiers={setTiers} team={team} setTeam={setTeam} productAdminProps={isSuperAdminUser ? {levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllPriceLevelsBtn, hiddenSkuSet, onVisibilityChange:(hidden)=>setHiddenSkuSet(new Set(hidden)), productOverrides, setProductOverrides:updateProductOverrides, effectiveCat, publishedMeta, onPublish:publishCatalog, onRevertPublished:revertPublishedCatalog} : null}/>}
         {/* v32: Customer Pricing admin page. Stage 1B reads the published Mouldings
            catalog for SKU/substrate autocomplete and UOM/Level 1 lookup. */}
         {page === "customerpricing" && isAdmin && <CustomerPricingAdmin effectiveCat={effectiveCat}/>}
