@@ -1386,7 +1386,7 @@ const G = "#0C1F0E"; const GM = "#1B4332"; const GL = "#2D6A4F"; const GOLD = "#
    the Customer Pricing page. BUMP THIS INTEGER ON EVERY DEPLOY. Simple,
    monotonic, unambiguous — no letter stages, no dotted sub-versions.
    Whatever was live before gets +1 on the next ship. */
-const VERSION = 39;
+const VERSION = 40;
 const VERSION_LABEL = `v${VERSION}`;
 
 /* Sort lengths numerically shortest first: "16', 8'" → "8', 16'" */
@@ -1592,7 +1592,7 @@ function SetNewPasswordPage({onDone, mode}) {
 /* ─── ADMIN PANEL ─── */
 function AdminPanel({user, tiers, setTiers, team, setTeam, productAdminProps}) {
   const isSuper = user?.role === "super_admin";
-  const [tab, setTab] = useState(isSuper ? "cpadmin" : "tiers");
+  const [tab, setTab] = useState(isSuper ? "product" : "tiers");
   const [newTier, setNewTier] = useState({name:"",markup:1.30});
   const [editId, setEditId] = useState(null);
   const [editName, setEditName] = useState("");
@@ -1646,8 +1646,9 @@ function AdminPanel({user, tiers, setTiers, team, setTeam, productAdminProps}) {
   const copyTemp = () => { if (uResult) { navigator.clipboard?.writeText(uResult.temp_password); setCopied(true); setTimeout(()=>setCopied(false), 1500); } };
 
   const tabs = isSuper ? [
-    {key:"cpadmin", label:"Customer & Product Admin"},
-    {key:"users",   label:"User Admin"}
+    {key:"product",  label:"Product Admin"},
+    {key:"customer", label:"Customer Admin"},
+    {key:"users",    label:"User Admin"}
   ] : [
     {key:"tiers",   label:"Customer Tiers"},
     {key:"team",    label:"Team Members"},
@@ -1662,9 +1663,10 @@ function AdminPanel({user, tiers, setTiers, team, setTeam, productAdminProps}) {
       <div style={{display:"flex",gap:4,marginBottom:24,background:"rgba(0,0,0,0.3)",borderRadius:10,padding:4,border:"1px solid rgba(255,255,255,0.06)"}}>
         {tabs.map(t => (<button key={t.key} onClick={()=>setTab(t.key)} style={{flex:1,padding:"10px 16px",borderRadius:8,border:"none",background:tab===t.key?"rgba(197,165,90,0.12)":"transparent",color:tab===t.key?GOLD:"rgba(255,255,255,0.4)",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Archivo',sans-serif",transition:"all 0.15s",letterSpacing:0.5}}>{t.label}</button>))}
       </div>
-      {(tab === "tiers" || tab === "cpadmin") && (<div>
-        {tab === "cpadmin" && productAdminProps && <div style={{marginBottom:36}}><ProductAdmin {...productAdminProps}/></div>}
-        {tab === "cpadmin" && <div style={{fontSize:13,fontWeight:900,color:GOLD,letterSpacing:1.5,margin:"0 0 16px",textTransform:"uppercase",paddingTop:8,borderTop:"1px solid rgba(197,165,90,0.15)"}}>Customer Tiers</div>}
+      {tab === "product" && productAdminProps && <div><ProductAdmin {...productAdminProps} hideCustomerList={true}/></div>}
+      {(tab === "tiers" || tab === "customer") && (<div>
+        {tab === "customer" && <div style={{marginBottom:36}}><div style={{fontSize:11,fontWeight:900,color:GOLD,letterSpacing:2,textTransform:"uppercase",marginBottom:10,marginTop:4,paddingBottom:6,borderBottom:`2px solid ${GOLD}`}}>Customer Master List</div><CustomerListAdmin/></div>}
+        {tab === "customer" && <div style={{fontSize:13,fontWeight:900,color:GOLD,letterSpacing:1.5,margin:"0 0 16px",textTransform:"uppercase"}}>Customer Tiers</div>}
         <div style={{background:"rgba(197,165,90,0.06)",borderRadius:10,padding:16,border:"1px solid rgba(197,165,90,0.15)",marginBottom:20}}>
           <div style={{fontSize:13,color:GOLD,fontWeight:600,marginBottom:4}}>What are Customer Tiers?</div>
           <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",lineHeight:1.6}}>Create pricing categories for your different customer types. When your sales team is working with a customer, they select a tier from the "Pricing Type" dropdown — the portal shows the marked-up sell price and hides the markup formula.</div>
@@ -2750,7 +2752,7 @@ function parseCSV(text, config) {
 }
 
 /* ─── PRODUCT ADMIN PANEL ─── */
-function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllPriceLevelsBtn, hiddenSkuSet, onVisibilityChange, productOverrides, setProductOverrides, effectiveCat, publishedMeta, onPublish, onRevertPublished}) {
+function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllPriceLevelsBtn, hiddenSkuSet, onVisibilityChange, productOverrides, setProductOverrides, effectiveCat, publishedMeta, onPublish, onRevertPublished, hideCustomerList}) {
   /* effectiveCat = publishedCatalog || CAT. Admin reads the live catalog
      so the product table always reflects what the main pricing views see.
      Fall back to the embedded constant if (somehow) not supplied. */
@@ -3279,7 +3281,7 @@ function ProductAdmin({levelVis, setLevelVis, showAllPriceLevelsBtn, setShowAllP
           in one place). Contains its own state + import logic; reads and
           writes localStorage. ─── */}
       <div style={{fontSize:11,fontWeight:900,color:GOLD,letterSpacing:2,textTransform:"uppercase",marginBottom:10,marginTop:4,paddingBottom:6,borderBottom:`2px solid ${GOLD}`}}>Master Data</div>
-      <CustomerListAdmin/>
+      {!hideCustomerList && <CustomerListAdmin/>}
 
       {/* ═══════════════════════════════════════════════════════════════
           Stage 1B.4 · PRODUCT MASTER LIST card
